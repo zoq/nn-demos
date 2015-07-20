@@ -27,7 +27,10 @@ std::string RequestContent(const FCGX_Request& request)
 
     char *contentLengthCptr = FCGX_GetParam("CONTENT_LENGTH", request.envp);
     contentLengthString = contentLengthCptr;
-  } // Unlock the mutex.
+
+    // Unlock the mutex.
+    requestContentMutex.unlock();
+  }
 
   size_t contentLength = 0;
   if (!contentLengthString.empty())
