@@ -20,7 +20,7 @@ namespace parser {
   };
 
   // The event vector contains all events that are parsed by the parser.
-  std::vector<std::string> events = {"image"};
+  std::vector<std::string> events = {"weight", "gradient", "input"};
 
   /*
    * Cuts off the delimiter (default) and everything that follows.
