@@ -27,6 +27,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 
 # Set source file path.
 set(mnist_source
+    config.hpp
     http.hpp
     parser.hpp
     graphics.hpp
