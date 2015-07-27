@@ -9,6 +9,6 @@
 #include <string>
 
 namespace config {
-  // The deployment domain and path.
+  // The deployment path.
   const static std::string domain = "mnist";
 }
