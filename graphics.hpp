@@ -26,9 +26,7 @@ namespace graphics {
     arma::mat image = m;
     cv::Mat opencvMat(image.n_rows, image.n_cols, CV_64FC1, image.memptr());
 
-    std::vector<int> p;
-    p.push_back(CV_IMWRITE_JPEG_QUALITY);
-    p.push_back(quality);
+    std::vector<int> p {CV_IMWRITE_JPEG_QUALITY, quality};
 
     std::vector<unsigned char> buf;
     imencode(".jpg", opencvMat, buf, p);
