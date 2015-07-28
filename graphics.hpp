@@ -21,7 +21,7 @@ namespace graphics {
    * @return String representation of the jpeg image.
    */
   static inline std::string Mat2Image(const arma::mat& m,
-                                      const int quality = 95)
+                                      const int quality = 55)
   {
     arma::mat image = m;
     cv::Mat opencvMat(image.n_rows, image.n_cols, CV_64FC1, image.memptr());
