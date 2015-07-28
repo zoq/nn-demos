@@ -10,5 +10,8 @@
 
 namespace config {
   // The deployment path.
-  const static std::string domain = "mnist";
+  const static std::string path = "mnist";
+
+  // The deployment url.
+  const static std::string url = "https://urgs.org/mnist";
 }
