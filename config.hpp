@@ -14,4 +14,7 @@ namespace config {
 
   // The deployment url.
   const static std::string url = "https://urgs.org/mnist";
+
+  // The dataset to be loaded.
+  const static std::string dataset = "/home/marcus/src/mlpack/build/mnist_first250_training_4s_and_9s.arm";
 }
