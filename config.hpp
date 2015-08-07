@@ -16,8 +16,8 @@ namespace config {
   const static int port = 9972;
 
   // The deployment url.
-  const static std::string url = "ws://urgs.org:9972/mnist";
+  const static std::string url = "http://virtual-artz.de/mnist/index.html";
 
   // The dataset to be loaded.
-  const static std::string dataset = "/home/marcus/src/mlpack/build/mnist_first250_training_4s_and_9s.arm";
+  const static std::string dataset = "/home/marcus/src/nn-demos/mnist_test.csv";
 }
