@@ -20,17 +20,20 @@ find_package(Armadillo 3.6.0 REQUIRED)
 find_package(Mlpack REQUIRED)
 
 # Include directories for the dependencies.
+include_directories(${MLPACK_INCLUDE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/websocketpp)
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR})
 
+
 # Set source file path.
 set(mnist_source
     config.hpp
-    http.hpp
     parser.hpp
     graphics.hpp
+    job.hpp
     mnist.cpp
 )
 
