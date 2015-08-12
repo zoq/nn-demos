@@ -19,8 +19,8 @@ namespace config {
   const static std::string url = "http://virtual-artz.de/mnist/index.html";
 
   // The train dataset to be loaded.
-  const static std::string trainDataset = "/home/marcus/src/nn-demos/mnist_train.csv";
+  const static std::string trainDataset = "mnist_train.csv";
 
   // The test dataset to be loaded.
-  const static std::string testDataset = "/home/marcus/src/nn-demos/mnist_test.csv";
+  const static std::string testDataset = "mnist_test.csv";
 }
