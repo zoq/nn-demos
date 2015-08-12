@@ -30,11 +30,11 @@ include_directories(${CMAKE_SOURCE_DIR})
 
 # Set source file path.
 set(mnist_source
-    config.hpp
+    mnist/config.hpp
     parser.hpp
     graphics.hpp
-    job.hpp
-    mnist.cpp
+    mnist/job.hpp
+    mnist/mnist.cpp
 )
 
 # Define the executable and link against the libraries we need to build the
