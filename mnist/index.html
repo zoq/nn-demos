@@ -1,0 +1,694 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>MNIST demo</title>
+    <script src="styles/js/jquery.min.js"></script>
+    <script src="styles/js/Chart.js"></script>
+    <link rel="stylesheet" href="styles/css/materialize.min.css">
+    <link rel="stylesheet" href="styles/css/style.css">
+
+    <script type="text/javascript">
+      var viewState = true;
+      var ws;
+
+      function TrainingButtonFunction()
+      {
+        ws.send("/id=0&start=0");
+      }
+
+      function ViewButtonFunction()
+      {
+        if (viewState == true)
+        {
+          viewState = false;
+          document.getElementById('viewbtn').innerHTML = "Enable View Update";
+        }
+        else
+        {
+          viewState = true;
+          document.getElementById('viewbtn').innerHTML = "Disable View Update";
+        }
+      }
+
+      function createChart() {
+        var data = {
+          labels: ["0", "0"],
+          datasets: [
+            {
+              label: "Training Error",
+              fillColor: "rgba(255, 255, 255,0.5)",
+              strokeColor: "rgba(220,220,220,1)",
+              pointColor: "rgba(220,220,220,1)",
+              pointStrokeColor: "#fff",
+              pointHighlightFill: "#fff",
+              pointHighlightStroke: "rgba(220,220,220,1)",
+              data: [0, 0]
+            },
+            {
+              label: "Testing Error",
+              fillColor: "rgba(151,187,205,0.2)",
+              strokeColor: "rgba(151,187,205,1)",
+              pointColor: "rgba(151,187,205,1)",
+              pointStrokeColor: "#fff",
+              pointHighlightFill: "#fff",
+              pointHighlightStroke: "rgba(151,187,205,1)",
+              data: [0, 0]
+            }
+          ]
+        };
+
+        var ctx = document.getElementById("trainingChart").getContext("2d");
+        window.myLine = new Chart(ctx).Line(data, {responsive: true, scaleFontColor: "#FFFFFF"});
+      }
+
+      function Init()
+      {
+        if ("WebSocket" in window)
+        {
+          ws = new WebSocket("ws://ws.virtual-artz.de/mnist" + location.search);
+
+          ws.onopen = function()
+          {
+            ws.send("/id=0&state=0");
+          };
+
+          ws.onmessage = function (evt)
+          {
+            if (viewState == false)
+            {
+              return;
+            }
+
+            jsonObj = JSON.parse(evt.data);
+            var jsonKeys = Object.keys(jsonObj);
+            for (var i = 0; i < jsonKeys.length; i++)
+            {
+              if (jsonKeys[i] == "redirect")
+              {
+                window.location.replace(jsonObj[jsonKeys[i]]);
+              }
+
+              if (jsonKeys[i].indexOf("layerActivation") > -1 ||
+                  jsonKeys[i].indexOf("layerWeight") > -1 ||
+                  jsonKeys[i].indexOf("layerGradient") > -1 ||
+                  jsonKeys[i].indexOf("predictionActivation") > -1)
+              {
+                var element = document.getElementById(jsonKeys[i]);
+                if (element == null)
+                {
+                  continue;
+                }
+
+                element.setAttribute( 'src', 'data:image/png;base64,' + jsonObj[jsonKeys[i]]);
+              }
+              else if (jsonKeys[i] == "trainingError")
+              {
+                window.myLine.addData([jsonObj["trainingError"], jsonObj["testingError"]], jsonObj["iteration"]);
+              }
+              else if (jsonKeys[i] == "state")
+              {
+                if (jsonObj[jsonKeys[i]] === "0")
+                {
+                  document.getElementById('trainingbtn').innerHTML = "Stop Training";
+                }
+                else if (jsonObj[jsonKeys[i]] === "1")
+                {
+                  document.getElementById('trainingbtn').innerHTML = "Queued - Waiting";
+                }
+                else if (jsonObj[jsonKeys[i]] === "2")
+                {
+                  document.getElementById('trainingbtn').innerHTML = "Start Training";
+                }
+              }
+              else if (jsonKeys[i].indexOf("predictionValues") > -1)
+              {
+                var predictionValues = jsonObj[jsonKeys[i]].split("-");
+
+                for (var j = 0; j < predictionValues.length - 1; j++)
+                {
+                  var element = document.getElementById(jsonKeys[i] + j.toString());
+                  if (element != null)
+                  {
+                    element.innerHTML = predictionValues[j];
+                    if (predictionValues[j] == predictionValues[predictionValues.length - 1])
+                    {
+                      element.style.backgroundColor = "#00CC33";
+                    }
+                    else
+                    {
+                      element.style.backgroundColor = "#CC0000";
+                    }
+                  }
+                }
+              }
+              else if (jsonKeys[i].indexOf("probValues") > -1)
+              {
+                var probValues = jsonObj[jsonKeys[i]].split("-");
+
+                for (var j = 0; j < probValues.length - 1; j++)
+                {
+                  var element = document.getElementById("predictionValues" + jsonKeys[i].slice(10) + j.toString());
+                  if (element != null)
+                  {
+                    element.style.width = ((probValues[j] * 100 | 0))  + "%";
+                  }
+                }
+              }
+              else
+              {
+                var element = document.getElementById(jsonKeys[i]);
+                if (element == null)
+                {
+                  continue;
+                }
+
+                element.innerHTML = jsonObj[jsonKeys[i]];
+              }
+            }
+          };
+
+          ws.onclose = function()
+          {
+            console.info("Connection is closed...");
+          };
+        }
+
+        else
+        {
+           console.alert("WebSocket NOT supported by your Browser!");
+        }
+      }
+    </script>
+
+  </head>
+  <body onLoad="Init(); createChart();">
+  <div class="wrapper">
+
+    <h2 class="heading center">MNIST Demo</h2>
+    <div class="container">
+      <div class="col s12 m6">
+        <div class="card blue-grey darken-1">
+          <div class="card-content white-text">
+            <span class="card-title">Description</span>
+            <p>This demo trains a Convolutional Neural Network on the <a href="http://yann.lecun.com/exdb/mnist/">MNIST Dataset</a> (Mixed National Institute of Standards and Technology database) digits dataset and shows the training process in your browser. We will use the architecture known as <a href="http://yann.lecun.com/exdb/publis/pdf/lecun-98.pdf">LeNet</a>, which is a deep convolutional neural network known to work well on handwritten digit classification tasks.</p>
+            <p>More precisely, we will use <a href="http://mlpack.org">mlpack's</a> neural network architecture, to build a modified version of the network by replacing the sigmoid activation functions with Rectified Learning Unit (ReLU) activation functions. The basic network structure consists of a convolution layer followed by a pooling layer, and then another convolution followed by a pooling layer. After that, one densely connected layer is added.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+        <div class="col s12 m6">
+          <div class="card blue-grey darken-1">
+            <div class="card-content white-text">
+              <span class="card-title">Training Stats</span>
+              <div class="settings--holder">
+                <div class="row">
+                  <form class="col s12">
+                    <div class="row">
+                      <div class="input-field col s12">
+
+                        <a id ="trainingbtn" class="waves-effect waves-light btn" onclick="TrainingButtonFunction()">Stop Training</a>
+                        <a id ="viewbtn" class="waves-effect waves-light btn" onclick="ViewButtonFunction()">Disable View Update</a>
+
+                        <input class="with-gap" name="group1" type="radio" id="RMSprop" disabled="disabled" />
+                        <label for="RMSprop">RMSprop</label>
+                        <input class="with-gap" name="group1" type="radio" id="AdaDelta" checked />
+                        <label for="AdaDelta">AdaDelta</label>
+                        <input class="with-gap" name="group1" type="radio" id="SGD" disabled="disabled" />
+                        <label for="SGD">SGD</label>
+                        <input class="with-gap" name="group1" type="radio" id="ADAGrad" disabled="disabled" />
+                        <label for="ADAGrad">ADAGrad</label>
+
+                      </div>
+
+                      <div class="input-field col s2">
+                        <a class="collection-item white-text">Iteration:<span id="iteration" class="new badge">-</span></a>
+                      </div>
+
+                      <div class="input-field col s2">
+                        <a class="collection-item white-text">Sample:<span id="sampleIndex" class="new badge">-</span></a>
+                      </div>
+
+                      <div class="input-field col s3">
+                        <a class="collection-item white-text">Classification&nbsp;loss:<span id="classificationLoss" class="new badge">-</span></a>
+                      </div>
+
+                    </div>
+                  </form>
+                </div>
+              </div>
+                <span class="card-title">Classification loss</span>
+                <canvas id="trainingChart" height="50"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card teal darken-1">
+            <div class="card-content white-text">
+              <div class="row">
+                <div class="col s4">
+                  <h6>input (24x24x1):</h6>
+                  <span>max activation: <span id="maxActivation0"></span>, min: <span id="minActivation0"></span></span>
+                </div>
+                <div class="col s8">
+                  <div class="container__inner">
+                    <h6>Activation:</h6>
+                    <img id="layerActivation0" width="48" height="48" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card teal darken-1">
+            <div class="card-content white-text">
+              <div class="row">
+                <div class="col s4">
+                  <h6>convolution (24x24x8)</h6>
+                  <span>max activation: <span id="maxActivation1"></span>, min: <span id="minActivation1"></span></span><br><span>max weight: <span id="maxWeight1"></span>, min: <span id="minWeight1"></span></span><br><span>max gradient: <span id="maxGradient1"></span>, min: <span id="minGradient1"></span></span>
+                </div>
+                <div class="col s8">
+                  <div class="container__inner">
+                    <h6>Activations:</h6>
+                    <img width="44" height="44" id="layerActivation1" />
+                    <img width="44" height="44" id="layerActivation2" />
+                    <img width="44" height="44" id="layerActivation3" />
+                    <img width="44" height="44" id="layerActivation4" />
+                    <img width="44" height="44" id="layerActivation5" />
+                    <img width="44" height="44" id="layerActivation6" />
+                  </div>
+                  <div class="container__inner">
+                    <h6>Weights:</h6>
+                    <img width="30" height="30" id="layerWeight1" />
+                    <img width="30" height="30" id="layerWeight2" />
+                    <img width="30" height="30" id="layerWeight3" />
+                    <img width="30" height="30" id="layerWeight4" />
+                    <img width="30" height="30" id="layerWeight5" />
+                    <img width="30" height="30" id="layerWeight6" />
+                  </div>
+                  <div class="container__inner">
+                    <h6>Gradients:</h6>
+                    <img width="30" height="30" id="layerGradient1" />
+                    <img width="30" height="30" id="layerGradient2" />
+                    <img width="30" height="30" id="layerGradient3" />
+                    <img width="30" height="30" id="layerGradient4" />
+                    <img width="30" height="30" id="layerGradient5" />
+                    <img width="30" height="30" id="layerGradient6" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card teal darken-1">
+            <div class="card-content white-text">
+              <div class="row">
+                <div class="col s4">
+                  <h6>pooling (24x24x1):</h6>
+                  <span>max activation: <span id="maxActivation7"></span>, min: <span id="minActivation7"></span></span>
+                </div>
+                <div class="col s8">
+                  <div class="container__inner">
+                    <h6>Activations:</h6>
+                    <img width="30" height="30" id="layerActivation7" />
+                    <img width="30" height="30" id="layerActivation8" />
+                    <img width="30" height="30" id="layerActivation9" />
+                    <img width="30" height="30" id="layerActivation10" />
+                    <img width="30" height="30" id="layerActivation11" />
+                    <img width="30" height="30" id="layerActivation12" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card teal darken-1">
+            <div class="card-content white-text">
+              <div class="row">
+                <div class="col s4">
+                  <h6>convolution (24x24x1):</h6>
+                  <span>max activation: <span id="maxActivation13"></span>, min: <span id="minActivation13"></span></span><br><span>max weight: <span id="maxWeight7"></span>, min: <span id="minWeight7"></span></span><br><span>max gradient: <span id="maxGradient7"></span>, min: <span id="minGradient7"></span></span>
+                </div>
+                <div class="col s8">
+                  <div class="container__inner">
+                    <h6>Activations:</h6>
+                    <img width="30" height="30" id="layerActivation13" />
+                    <img width="30" height="30" id="layerActivation14" />
+                    <img width="30" height="30" id="layerActivation15" />
+                    <img width="30" height="30" id="layerActivation16" />
+                    <img width="30" height="30" id="layerActivation17" />
+                    <img width="30" height="30" id="layerActivation18" />
+                    <img width="30" height="30" id="layerActivation19" />
+                    <img width="30" height="30" id="layerActivation20" />
+                    <img width="30" height="30" id="layerActivation21" />
+                    <img width="30" height="30" id="layerActivation22" />
+                  </div>
+                  <div class="container__inner">
+                    <h6>Weights:</h6>
+                    <img width="20" height="20" id="layerWeight7" />
+                    <img width="20" height="20" id="layerWeight8" />
+                    <img width="20" height="20" id="layerWeight9" />
+                    <img width="20" height="20" id="layerWeight10" />
+                    <img width="20" height="20" id="layerWeight11" />
+                    <img width="20" height="20" id="layerWeight12" />
+                    <img width="20" height="20" id="layerWeight13" />
+                    <img width="20" height="20" id="layerWeight14" />
+                    <img width="20" height="20" id="layerWeight15" />
+                    <img width="20" height="20" id="layerWeight16" />
+                    <img width="20" height="20" id="layerWeight17" />
+                    <img width="20" height="20" id="layerWeight18" />
+                    <img width="20" height="20" id="layerWeight19" />
+                    <img width="20" height="20" id="layerWeight20" />
+                    <img width="20" height="20" id="layerWeight21" />
+                    <img width="20" height="20" id="layerWeight22" />
+                    <img width="20" height="20" id="layerWeight23" />
+                    <img width="20" height="20" id="layerWeight24" />
+                    <img width="20" height="20" id="layerWeight25" />
+                    <img width="20" height="20" id="layerWeight26" />
+                    <img width="20" height="20" id="layerWeight27" />
+                    <img width="20" height="20" id="layerWeight28" />
+                    <img width="20" height="20" id="layerWeight29" />
+                    <img width="20" height="20" id="layerWeight30" />
+                    <img width="20" height="20" id="layerWeight31" />
+                    <img width="20" height="20" id="layerWeight32" />
+                    <img width="20" height="20" id="layerWeight33" />
+                    <img width="20" height="20" id="layerWeight34" />
+                    <img width="20" height="20" id="layerWeight35" />
+                    <img width="20" height="20" id="layerWeight36" />
+                    <img width="20" height="20" id="layerWeight37" />
+                    <img width="20" height="20" id="layerWeight38" />
+                    <img width="20" height="20" id="layerWeight39" />
+                    <img width="20" height="20" id="layerWeight40" />
+                    <img width="20" height="20" id="layerWeight41" />
+                    <img width="20" height="20" id="layerWeight42" />
+                    <img width="20" height="20" id="layerWeight43" />
+                    <img width="20" height="20" id="layerWeight44" />
+                    <img width="20" height="20" id="layerWeight45" />
+                    <img width="20" height="20" id="layerWeight46" />
+                    <img width="20" height="20" id="layerWeight47" />
+                    <img width="20" height="20" id="layerWeight48" />
+                    <img width="20" height="20" id="layerWeight49" />
+                    <img width="20" height="20" id="layerWeight50" />
+                    <img width="20" height="20" id="layerWeight51" />
+                    <img width="20" height="20" id="layerWeight52" />
+                    <img width="20" height="20" id="layerWeight53" />
+                    <img width="20" height="20" id="layerWeight54" />
+                    <img width="20" height="20" id="layerWeight55" />
+                    <img width="20" height="20" id="layerWeight56" />
+                    <img width="20" height="20" id="layerWeight57" />
+                    <img width="20" height="20" id="layerWeight58" />
+                    <img width="20" height="20" id="layerWeight59" />
+                    <img width="20" height="20" id="layerWeight60" />
+                    <img width="20" height="20" id="layerWeight61" />
+                    <img width="20" height="20" id="layerWeight62" />
+                    <img width="20" height="20" id="layerWeight63" />
+                    <img width="20" height="20" id="layerWeight64" />
+                    <img width="20" height="20" id="layerWeight65" />
+                    <img width="20" height="20" id="layerWeight66" />
+                  </div>
+                  <div class="container__inner">
+                    <h6>Gradients:</h6>
+                    <img width="20" height="20" id="layerGradient7" />
+                    <img width="20" height="20" id="layerGradient8" />
+                    <img width="20" height="20" id="layerGradient9" />
+                    <img width="20" height="20" id="layerGradient10" />
+                    <img width="20" height="20" id="layerGradient11" />
+                    <img width="20" height="20" id="layerGradient12" />
+                    <img width="20" height="20" id="layerGradient13" />
+                    <img width="20" height="20" id="layerGradient14" />
+                    <img width="20" height="20" id="layerGradient15" />
+                    <img width="20" height="20" id="layerGradient16" />
+                    <img width="20" height="20" id="layerGradient17" />
+                    <img width="20" height="20" id="layerGradient18" />
+                    <img width="20" height="20" id="layerGradient19" />
+                    <img width="20" height="20" id="layerGradient20" />
+                    <img width="20" height="20" id="layerGradient21" />
+                    <img width="20" height="20" id="layerGradient22" />
+                    <img width="20" height="20" id="layerGradient23" />
+                    <img width="20" height="20" id="layerGradient24" />
+                    <img width="20" height="20" id="layerGradient25" />
+                    <img width="20" height="20" id="layerGradient26" />
+                    <img width="20" height="20" id="layerGradient27" />
+                    <img width="20" height="20" id="layerGradient28" />
+                    <img width="20" height="20" id="layerGradient29" />
+                    <img width="20" height="20" id="layerGradient30" />
+                    <img width="20" height="20" id="layerGradient31" />
+                    <img width="20" height="20" id="layerGradient32" />
+                    <img width="20" height="20" id="layerGradient33" />
+                    <img width="20" height="20" id="layerGradient34" />
+                    <img width="20" height="20" id="layerGradient35" />
+                    <img width="20" height="20" id="layerGradient36" />
+                    <img width="20" height="20" id="layerGradient37" />
+                    <img width="20" height="20" id="layerGradient38" />
+                    <img width="20" height="20" id="layerGradient39" />
+                    <img width="20" height="20" id="layerGradient40" />
+                    <img width="20" height="20" id="layerGradient41" />
+                    <img width="20" height="20" id="layerGradient42" />
+                    <img width="20" height="20" id="layerGradient43" />
+                    <img width="20" height="20" id="layerGradient44" />
+                    <img width="20" height="20" id="layerGradient45" />
+                    <img width="20" height="20" id="layerGradient46" />
+                    <img width="20" height="20" id="layerGradient47" />
+                    <img width="20" height="20" id="layerGradient48" />
+                    <img width="20" height="20" id="layerGradient49" />
+                    <img width="20" height="20" id="layerGradient50" />
+                    <img width="20" height="20" id="layerGradient51" />
+                    <img width="20" height="20" id="layerGradient52" />
+                    <img width="20" height="20" id="layerGradient53" />
+                    <img width="20" height="20" id="layerGradient54" />
+                    <img width="20" height="20" id="layerGradient55" />
+                    <img width="20" height="20" id="layerGradient56" />
+                    <img width="20" height="20" id="layerGradient57" />
+                    <img width="20" height="20" id="layerGradient58" />
+                    <img width="20" height="20" id="layerGradient59" />
+                    <img width="20" height="20" id="layerGradient60" />
+                    <img width="20" height="20" id="layerGradient61" />
+                    <img width="20" height="20" id="layerGradient62" />
+                    <img width="20" height="20" id="layerGradient63" />
+                    <img width="20" height="20" id="layerGradient64" />
+                    <img width="20" height="20" id="layerGradient65" />
+                    <img width="20" height="20" id="layerGradient66" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card teal darken-1">
+            <div class="card-content white-text">
+              <div class="row">
+                <div class="col s4">
+                  <h6>pooling (24x24x1):</h6>
+                  <span>max activation: <span id="maxActivation23"></span>, min: <span id="minActivation23"></span></span>
+                </div>
+                <div class="col s8">
+                  <div class="container__inner">
+                    <h6>Activations:</h6>
+                    <img width="15" height="15" id="layerActivation23" />
+                    <img width="15" height="15" id="layerActivation24" />
+                    <img width="15" height="15" id="layerActivation25" />
+                    <img width="15" height="15" id="layerActivation26" />
+                    <img width="15" height="15" id="layerActivation27" />
+                    <img width="15" height="15" id="layerActivation28" />
+                    <img width="15" height="15" id="layerActivation29" />
+                    <img width="15" height="15" id="layerActivation30" />
+                    <img width="15" height="15" id="layerActivation31" />
+                    <img width="15" height="15" id="layerActivation32" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card teal darken-1">
+            <div class="card-content white-text">
+              <div class="row">
+                <div class="col s4">
+                  <h6>softmax (24x24x1):</h6>
+                  <span>max activation: <span id="maxActivation33"></span>, min: <span id="minActivation33"></span></span>
+                </div>
+                <div class="col s8">
+                  <div class="container__inner">
+                    <h6>Activations:</h6>
+                    <img width="15" height="15" id="layerActivation33" />
+                    <img width="15" height="15" id="layerActivation34" />
+                    <img width="15" height="15" id="layerActivation35" />
+                    <img width="15" height="15" id="layerActivation36" />
+                    <img width="15" height="15" id="layerActivation37" />
+                    <img width="15" height="15" id="layerActivation38" />
+                    <img width="15" height="15" id="layerActivation39" />
+                    <img width="15" height="15" id="layerActivation40" />
+                    <img width="15" height="15" id="layerActivation41" />
+                    <img width="15" height="15" id="layerActivation42" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m6">
+          <div class="card blue-grey darken-1">
+            <div class="card-content white-text">
+              <span class="card-title">Example predictions</span>
+              <div class="testset row">
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation0" />
+                  <div>
+                      <div id="predictionValues00" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues01" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues02" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues03" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues04" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation1" />
+                  <div>
+                      <div id="predictionValues10" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues11" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues12" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues13" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues14" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation2" />
+                  <div>
+                      <div id="predictionValues20" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues21" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues22" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues23" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues24" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation3" />
+                  <div>
+                      <div id="predictionValues30" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues31" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues32" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues33" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues34" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation4" />
+                  <div>
+                      <div id="predictionValues40" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues41" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues42" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues43" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues44" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation5" />
+                  <div>
+                      <div id="predictionValues50" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues51" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues52" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues53" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues54" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation6" />
+                  <div>
+                      <div id="predictionValues60" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues61" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues62" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues63" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues64" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation7" />
+                  <div>
+                      <div id="predictionValues70" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues71" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues72" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues73" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues74" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation8" />
+                  <div>
+                      <div id="predictionValues80" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues81" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues82" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues83" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues84" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation9" />
+                  <div>
+                      <div id="predictionValues90" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues91" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues92" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues93" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues94" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+                <div class="probsdiv col l1 m2 s3">
+                  <img style="display: block; margin: 0 auto;" width="48" height="48" id="predictionActivation10" />
+                  <div>
+                      <div id="predictionValues100" style="width:0%; background-color:#00CC33;">-</div>
+                      <div id="predictionValues101" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues102" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues103" style="width:0%; background-color:#CC0000;">-</div>
+                      <div id="predictionValues104" style="width:0%; background-color:#CC0000;"></div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+  </div>
+  <script src="styles/js/materialize.min.js"></script>
+  </body>
+</html>
