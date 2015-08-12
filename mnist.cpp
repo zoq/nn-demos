@@ -25,6 +25,7 @@ int main(int argc, char **argv)
         &boost::asio::io_service::run, &job::io_service));
   }
 
+  // Start the websocket server.
   job::Server server;
   server.run(config::port);
 
