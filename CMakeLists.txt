@@ -43,3 +43,10 @@ add_executable(mnist ${mnist_source})
 target_link_libraries(mnist ${Boost_LIBRARIES} ${FCGI_LIB} ${FCGI++_LIB}
                             ${ARMADILLO_LIBRARIES} ${MLPACK_LIBRARY}
                             ${OpenCV_LIBS})
+
+# Copy the datasets into the right place.
+add_custom_command(TARGET mnist
+  POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/
+      ${PROJECT_BINARY_DIR}
+)
