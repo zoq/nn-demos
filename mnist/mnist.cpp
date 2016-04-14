@@ -17,9 +17,13 @@ int main(int argc, char **argv)
   std::auto_ptr<boost::asio::io_service::work> work(
       new boost::asio::io_service::work(job::io_service));
 
-  // Spawn worker threads.
-  size_t cores = std::thread::hardware_concurrency();
-  for (size_t i = 0; i < cores; i++)
+  // Spawn worker threads using the number of cores as limiter.
+  // size_t worker = std::thread::hardware_concurrency();
+
+  // Spawn worker using the specified number.
+  size_t worker = 3;
+
+  for (size_t i = 0; i < worker; i++)
   {
     threads.create_thread(boost::bind(
         &boost::asio::io_service::run, &job::io_service));
