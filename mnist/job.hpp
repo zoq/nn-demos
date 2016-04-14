@@ -14,25 +14,26 @@
 #include <websocketpp/base64/base64.hpp>
 
 #include <mlpack/core.hpp>
+
 #include <mlpack/methods/ann/activation_functions/rectifier_function.hpp>
+#include <mlpack/methods/ann/activation_functions/logistic_function.hpp>
 
-#include <mlpack/methods/ann/connections/full_connection.hpp>
-#include <mlpack/methods/ann/connections/identity_connection.hpp>
-#include <mlpack/methods/ann/connections/bias_connection.hpp>
-#include <mlpack/methods/ann/connections/conv_connection.hpp>
-#include <mlpack/methods/ann/connections/pooling_connection.hpp>
-
-#include <mlpack/methods/ann/layer/neuron_layer.hpp>
-#include <mlpack/methods/ann/layer/dropout_layer.hpp>
+#include <mlpack/methods/ann/layer/one_hot_layer.hpp>
+#include <mlpack/methods/ann/layer/conv_layer.hpp>
+#include <mlpack/methods/ann/layer/pooling_layer.hpp>
 #include <mlpack/methods/ann/layer/softmax_layer.hpp>
 #include <mlpack/methods/ann/layer/bias_layer.hpp>
+#include <mlpack/methods/ann/layer/linear_layer.hpp>
+#include <mlpack/methods/ann/layer/base_layer.hpp>
 #include <mlpack/methods/ann/layer/multiclass_classification_layer.hpp>
 
-#include <mlpack/methods/ann/cnn.hpp>
-#include <mlpack/methods/ann/trainer/trainer.hpp>
+#include <mlpack/methods/ann/network_util.hpp>
+
 #include <mlpack/methods/ann/performance_functions/mse_function.hpp>
-#include <mlpack/methods/ann/optimizer/ada_delta.hpp>
-#include <mlpack/methods/ann/init_rules/zero_init.hpp>
+#include <mlpack/core/optimizers/rmsprop/rmsprop.hpp>
+
+#include <mlpack/methods/ann/init_rules/random_init.hpp>
+#include <mlpack/methods/ann/cnn.hpp>
 
 #include "../parser.hpp"
 #include "../graphics.hpp"
@@ -91,104 +92,64 @@ namespace job {
       JobContainer(server& s,
                    connection_hdl hdl,
                    int sessionid,
-                   arma::mat& XTrain,
+                   arma::cube& XTrain,
                    arma::mat& YTrain,
-                   arma::mat& XTest,
+                   arma::cube& XTest,
                    arma::mat& YTest) :
         XTrain(XTrain),
         YTrain(YTrain),
         XTest(XTest),
         YTest(YTest),
         s(&s),
-        sessionid(sessionid)
+        sessionid(sessionid),
+        confusionSample(-1),
+        sendConfusion(false),
+        reset(false),
+        step(false),
+        sampleIndex(0)
       {
-        nPointsTrain = XTrain.n_cols;
-        nPointsTest = XTest.n_cols;
+        nPointsTrain = XTrain.n_slices;
+        nPointsTest = XTest.n_slices;
 
         // Add connection handle to the list of all connections. We use the list
         // to send all connected clients the data generated through the training
         // process.
         connectionHandles.push_back(hdl);
 
-        // Create the network structure.
-        inputLayerPtr = new NeuronLayer<RectifierFunction,
-            arma::cube>(28, 28, 1);
+        convLayer0Ptr = new ConvLayer<>(1, 8, 5, 5);
+        biasLayer0Ptr = new BiasLayer2D<>(8);
+        baseLayer0Ptr = new BaseLayer2D<RectifierFunction>();
+        poolingLayer0Ptr = new PoolingLayer<>(2);
 
-        convLayer0Ptr = new ConvLayer<RectifierFunction>(24, 24,
-            inputLayerPtr->LayerSlices(), 6);
+        convLayer1Ptr = new ConvLayer<>(8, 12, 5, 5);
+        biasLayer1Ptr = new BiasLayer2D<>(12);
+        baseLayer1Ptr = new BaseLayer2D<RectifierFunction>();
+        poolingLayer1Ptr = new PoolingLayer<>(2);
 
-        con1Ptr = new ConvConnection<NeuronLayer<RectifierFunction, arma::cube>,
-                                                 ConvLayer<RectifierFunction>,
-                                                 mlpack::ann::AdaDelta>
-                                                 (*inputLayerPtr,
-                                                  *convLayer0Ptr, 5);
-
-        biasLayer0Ptr = new BiasLayer<>(6);
-
-        con1BiasPtr = new BiasConnection<BiasLayer<>,
-                                         ConvLayer<RectifierFunction>,
-                                         mlpack::ann::AdaDelta,
-                                         mlpack::ann::ZeroInitialization>
-                                         (*biasLayer0Ptr, *convLayer0Ptr);
-
-        poolingLayer0Ptr = new PoolingLayer<>(12, 12,
-            inputLayerPtr->LayerSlices(), 6);
-
-        con2Ptr = new PoolingConnection<ConvLayer<RectifierFunction>,
-                                        PoolingLayer<> >
-                                        (*convLayer0Ptr, *poolingLayer0Ptr);
-
-        convLayer1Ptr = new ConvLayer<RectifierFunction>(8, 8,
-            inputLayerPtr->LayerSlices(), 10);
-
-
-        con3Ptr = new ConvConnection<PoolingLayer<>,
-                                     ConvLayer<RectifierFunction>,
-                                     mlpack::ann::AdaDelta>
-                                     (*poolingLayer0Ptr, *convLayer1Ptr, 5);
-
-        biasLayer3Ptr = new BiasLayer<>(10);
-
-        con3BiasPtr = new BiasConnection<BiasLayer<>,
-                                         ConvLayer<RectifierFunction>,
-                                         mlpack::ann::AdaDelta,
-                                         mlpack::ann::ZeroInitialization>
-                                         (*biasLayer3Ptr, *convLayer1Ptr);
-
-        poolingLayer1Ptr  = new PoolingLayer<>(4, 4,
-            inputLayerPtr->LayerSlices(), 10);
-
-        con4Ptr = new PoolingConnection<ConvLayer<RectifierFunction>,
-                                        PoolingLayer<> >
-                                        (*convLayer1Ptr, *poolingLayer1Ptr);
-
-        outputLayerPtr = new SoftmaxLayer<arma::mat>(10,
-            inputLayerPtr->LayerSlices());
-
-        con5Ptr = new FullConnection<PoolingLayer<>,
-                                     SoftmaxLayer<arma::mat>,
-                                     mlpack::ann::AdaDelta>
-                                     (*poolingLayer1Ptr, *outputLayerPtr);
-
-        biasLayer1Ptr = new BiasLayer<>(1);
-
-        con5BiasPtr = new FullConnection<BiasLayer<>,
-                                         SoftmaxLayer<arma::mat>,
-                                         mlpack::ann::AdaDelta,
-                                         mlpack::ann::ZeroInitialization>
-                                         (*biasLayer1Ptr, *outputLayerPtr);
+        linearLayer0Ptr = new LinearMappingLayer<>(192, 10);
+        biasLayer2Ptr = new BiasLayer<>(10);
+        softmaxLayer0Ptr = new SoftmaxLayer<>();
 
         finalOutputLayerPtr = new MulticlassClassificationLayer();
 
         // Initilize the gradient storage.
-        gradient0 = con1Ptr->Weights();
-        gradient1 = con3Ptr->Weights();
+        gradient0 = convLayer0Ptr->Weights();
+        gradient1 = convLayer1Ptr->Weights();
 
         trainingError = 0;
         trainingErrorcurrent = 0;
         trainingSeqCur = 0;
         trainingSeqStart = 0;
         state = 1; // Waiting
+
+        // Initilize the confusion matrix.
+        confusion = arma::Mat<int>(10, 10);
+
+        // Initilize the confusion matrix samples.
+        confusionClassification = arma::zeros<arma::Mat<int> >(10 * 10, 25);
+
+        // Initilize the confusion matrix probabilities.
+        confusionProps = arma::zeros<arma::mat>(10 * 10, 25);
 
         // Send current job state.
         SendState();
@@ -204,29 +165,63 @@ namespace job {
 
         SendState();
 
-        auto module0 = std::tie(*con1Ptr, *con1BiasPtr);
-        auto module1 = std::tie(*con2Ptr);
-        auto module2 = std::tie(*con3Ptr, *con3BiasPtr);
-        auto module3 = std::tie(*con4Ptr);
-        auto module4 = std::tie(*con5Ptr, *con5BiasPtr);
-        auto modules = std::tie(module0, module1, module2, module3, module4);
+        // Create the network.
+        auto modules = std::tie(*convLayer0Ptr,
+                                *biasLayer0Ptr,
+                                *baseLayer0Ptr,
+                                *poolingLayer0Ptr,
+                                *convLayer1Ptr,
+                                *biasLayer1Ptr,
+                                *baseLayer1Ptr,
+                                *poolingLayer1Ptr,
+                                *linearLayer0Ptr,
+                                *biasLayer2Ptr,
+                                *softmaxLayer0Ptr);
 
-        CNN<decltype(modules), decltype(*finalOutputLayerPtr)>
-        net(modules, *finalOutputLayerPtr);
+        CNN<decltype(modules), MulticlassClassificationLayer>
+        net(modules, *finalOutputLayerPtr, XTrain, YTrain);
 
-        Trainer<decltype(net)> trainer(net, 1, 4, 0.03);
+        // Initilize the gradient used to update the weights.
+        arma::mat gradient = arma::zeros<arma::mat>(
+            net.Parameters().n_rows, net.Parameters().n_cols);
 
+        // Reset the current paremter.
+        if (meanSquaredGradient.empty() || reset)
+        {
+          meanSquaredGradient = gradient;
+          sampleIndex = 0;
+
+          if (reset) reset = false;
+        }
+        else
+        {
+          data::Load("model_" + std::to_string(sessionid) + ".xml",
+              "cnn_model", net);
+        }
+
+        // Parameter to store the current prediction.
         arma::cube inputPrediction = arma::cube(28, 28, 1);
-        arma::mat predictionOutput;
+
+        // Create train and test iteration index.
         arma::Col<size_t> indexTrain = arma::linspace<arma::Col<size_t> >(0,
             nPointsTrain - 1, nPointsTrain);
 
         arma::Col<size_t> indexTest = arma::linspace<arma::Col<size_t> >(0,
             nPointsTest - 1, nPointsTest);
 
-        arma::mat error;
+        // Set the current batch size.
         int batchSize = 2;
+
+        // We set the default prediction mode.
         bool predict = true;
+
+        // Paremter to count the current samples that forms a batch.
+        int batchCounter = 0;
+
+        // RMSProp settings.
+        const double stepSize = 0.01;
+        const double alpha = 0.99;
+        const double eps = 1e-8;
 
         bool predictOnly = true;
         for (size_t z = 0; z < 10; z++)
@@ -239,63 +234,124 @@ namespace job {
             break;
           }
 
+          if (!step)
+          {
+            confusion.zeros();
+            confusionClassification.zeros();
+            confusionProps.zeros();
+          }          
+
           if ((z % 10) == 0)
             trainingSeqStart++;
 
           trainingError = 0;
           testingError = 0;
           predict = true;
+
           for (size_t i = 0; i < nPointsTrain; i++)
           {
-            SendTrainInfo(z, i);
+            sampleIndex++;
+            SendTrainInfo(z, sampleIndex);
 
             if (state == 2)
             {
               break;
             }
 
-            if ((i % 500) == 0)
+            if (((i % 500) == 0) || step)
               predict = true;
 
             indexTrain = arma::shuffle(indexTrain);
-
-            arma::cube inputTemp = arma::cube(28, 28, 1);
-            inputTemp.slice(0) = arma::mat(XTrain.colptr(indexTrain(i)), 28, 28);
-
             arma::mat targetTemp = YTrain.col(indexTrain(i));
-            net.FeedForward(inputTemp,  targetTemp, error);
+
+            arma::mat funcGradient = arma::zeros<arma::mat>(gradient.n_rows,
+                gradient.n_cols);
+
+            m.lock();
+
+            try
+            {
+              net.Gradient(net.Parameters(), indexTrain(i), funcGradient);
+            }
+            catch(...)
+            {
+              continue;
+            }
+
+            arma::mat trainPredictionOutput =
+                softmaxLayer0Ptr->OutputParameter();
+
+            if (trainPredictionOutput.is_finite())
+            {
+              arma::uword trainPredictionIndexMax, trainTargetIndexMax;
+              
+              trainPredictionOutput.max(trainPredictionIndexMax);
+              targetTemp.max(trainTargetIndexMax);
+
+              confusion(trainTargetIndexMax, trainPredictionIndexMax)++;
+              
+              // Get the sample class.
+              arma::uword confusionClassIndex = sub2ind(10, 10,
+                  trainTargetIndexMax, trainPredictionIndexMax);
+
+              // Get the current sample index.
+              arma::uword confusionSampleIndex = confusionClassification(
+                  confusionClassIndex, 0);
+
+              // Set the current sample.
+              confusionClassification(confusionClassIndex,
+                (confusionSampleIndex % 18) + 1) = indexTrain(i);
+
+              // Set the current prediction propability.
+              confusionProps(confusionClassIndex,
+                  (confusionSampleIndex % 18) + 1) = trainPredictionOutput(
+                  trainPredictionIndexMax);
+
+              // Increase the sample index.
+              confusionClassification(confusionClassIndex, 0)++;
+              confusionProps(confusionClassIndex, 0)++;
+            }         
 
             if (predict || ((i % 250) == 0))
             {
-              SendActivation(inputTemp.slice(0), 0);
-              SendActivation(convLayer0Ptr->InputActivation(), 1);
-              SendActivation(poolingLayer0Ptr->InputActivation(), 7);
-              SendActivation(convLayer1Ptr->InputActivation(), 13);
-              SendActivation(poolingLayer1Ptr->InputActivation(), 23);
+              SendConfusion(confusion);
+            }
 
-              arma::colvec outputTemp = outputLayerPtr->InputActivation().col(0);
+            if (predict || ((i % 250) == 0))
+            {
+              SendActivation(XTrain.slice(indexTrain(i)), 0);
+              SendActivation(convLayer0Ptr->OutputParameter(), 1);
+              SendActivation(poolingLayer0Ptr->OutputParameter(), 7);
+              SendActivation(convLayer1Ptr->OutputParameter(), 13);
+              SendActivation(poolingLayer1Ptr->OutputParameter(), 23);
+
+              arma::colvec outputTemp =
+                  softmaxLayer0Ptr->OutputParameter().col(0);
               SendActivation(outputTemp, 33);
 
-              SendWeight(con1Ptr->Weights(), 1);
-              SendWeight(con3Ptr->Weights(), 7);
+              SendWeight(convLayer0Ptr->Weights(), 1);
+              SendWeight(convLayer1Ptr->Weights(), 7);
             }
 
-            trainingError += net.Error();
+            // trainingError += net.Error();
+            trainingError += 0.1;
 
-            net.FeedBackward(error);
+            gradient += funcGradient;
+            batchCounter++;
 
-            if (!con1Ptr->Optimizer().Gradient().is_empty() &&
-                (con1Ptr->Optimizer().Gradient().max() > 0))
+            // net.FeedBackward(inputTemp, error);
+
+            if (!convLayer0Ptr->Gradient().is_empty() &&
+                (convLayer0Ptr->Gradient().max() > 0))
             {
-              gradient0 = arma::cube(con1Ptr->Optimizer().Gradient());
+              gradient0 = arma::cube(convLayer0Ptr->Gradient());
             }
 
-            if (!con3Ptr->Optimizer().Gradient().is_empty() &&
-                (con3Ptr->Optimizer().Gradient().max() > 0))
+            if (!convLayer1Ptr->Gradient().is_empty() &&
+                (convLayer1Ptr->Gradient().max() > 0))
             {
-              gradient1 = arma::cube(con3Ptr->Optimizer().Gradient());
+              gradient1 = arma::cube(convLayer1Ptr->Gradient());
             }
-
 
             if (predict || ((i % 250) == 0))
             {
@@ -303,11 +359,23 @@ namespace job {
               SendGradient(gradient1, 7);
             }
 
-            if (((i + 1) % batchSize) == 0)
+            // if (((i + 1) % batchSize) == 0)
+            if (batchCounter == batchSize)
             {
-              net.ApplyGradients();
+              batchCounter = 0;
+              // net.ApplyGradients();
+
+              gradient /= batchSize;
+
+              meanSquaredGradient *= alpha;
+              meanSquaredGradient += (1 - alpha) * (gradient % gradient);
+              net.Parameters() -= stepSize * gradient /
+                  (arma::sqrt(meanSquaredGradient) + eps);
+
+              gradient.zeros();
             }
 
+            m.unlock();
 
             if (predict)
             {
@@ -317,19 +385,34 @@ namespace job {
 
                 for (size_t k = 0; k < nPointsTest; k++)
                 {
-                  arma::mat* tempTestInput = new arma::mat(
-                      XTest.colptr(indexTest(k)),28, 28);
+                  arma::mat predictionOutput;
+                  arma::mat* tempTestInput = &XTest.slice(indexTest(k));
 
-                  inputPrediction.slice(0) = *tempTestInput;
-                  net.Predict(inputPrediction, predictionOutput);
+                  m.lock();
+
+                  inputPrediction.slice(0) = XTest.slice(indexTest(k));
+                  try 
+                  {
+                    net.Predict(inputPrediction, predictionOutput);
+                  }
+                  catch(...)
+                  {
+                    m.unlock();
+                    break;
+                  }
+
+                  m.unlock();                  
 
                   if (predictOnly)
                   {
-                    testingError += net.Error();
+                    // testingError += net.Error();
+                    testingError += 0.1;
                   }
 
                   if (!predictionOutput.is_finite())
+                  {
                     continue;
+                  }
 
                   // Collection data for the prediction block.
                   if (k < 11)
@@ -365,6 +448,13 @@ namespace job {
                 std::cout << "error: sort_index(): detected non-finite values \n";
               }
             }
+          
+            if (step)
+            {
+              state = 2;
+              step = false;
+              break;
+            }
           }
 
           trainingError /= nPointsTrain;
@@ -375,9 +465,10 @@ namespace job {
 
 
           SendTrainingStatus(z);
-
-
         }
+
+        data::Save("model_" + std::to_string(sessionid) + ".xml", "cnn_model",
+            net);
 
         state = 2; // Stop
 
@@ -390,6 +481,92 @@ namespace job {
       int State() const { return state; }
       //! Modify the state.
       int& State() { return state; }
+
+      //! Get the reset mode.
+      bool Reset() const { return reset; }
+      //! Modify the reset mode.
+      bool& Reset() { return reset; }
+
+      //! Get the step mode.
+      bool Step() const { return step; }
+      //! Modify the step mode.
+      bool& Step() { return step; }
+
+      /*
+       * Send the confusion samples of the given id to all connected clients.
+       */
+      void ConfusionSamples(int id)
+      {
+        m.lock();
+
+        if (confusionClassification.empty())
+        {
+          m.unlock();
+          return;
+        }
+
+        sendConfusion = true;
+        size_t classIndex = 0;
+
+        if (id <= 9)
+        {
+          classIndex = sub2ind(10, 10, id, 0);
+        }
+        else
+        {
+          std::string idStr = std::to_string(id);
+          std::string rowStr(1, idStr.at(1));
+          std::string colStr(1, idStr.at(0));
+
+          classIndex = sub2ind(10, 10, std::stoi(rowStr), std::stoi(colStr));
+        }
+
+        for (size_t j = 1, sampleId = 0; j < confusionClassification.n_cols; j++)
+        {
+          if (confusionClassification(classIndex, j) != 0)
+          {
+            arma::mat input = XTrain.slice(
+                confusionClassification(classIndex, j));
+
+            std::stringstream samplePropConfusion;
+            samplePropConfusion << std::fixed << std::setprecision(2);
+            samplePropConfusion << confusionProps(classIndex, j);
+
+            std::string output = "{";
+            output += "\"$schema\": \"http://json-schema.org/draft-04/schema#\",";
+            output += "\"samplePropConfusion" + std::to_string(sampleId) + "\": \"" + samplePropConfusion.str() + "\",";
+            std::string imageString = graphics::Mat2Image(arma::normalise(input) * 255);
+            output += "\"sampleConfusion" + std::to_string(sampleId++) + "\": \"";
+            output += websocketpp::base64_encode(imageString) + "\"";
+            output += "}";
+
+            size_t i = 0;
+            for (; i < connectionHandles.size(); i++)
+            {
+              try {
+                s->send(connectionHandles[i], output,
+                    websocketpp::frame::opcode::TEXT);
+              } catch (...) {
+                // Remove connection handle from the connection list.
+                connectionHandles.erase(connectionHandles.begin() + i);
+              }
+            }
+          }
+        }
+
+        m.unlock();
+      }
+
+      /*
+       * Get the continues index of the given row col.
+       */
+      size_t sub2ind(const size_t rows,
+                     const size_t cols,
+                     const size_t row,
+                     const size_t col)
+      {
+         return row*cols+col;
+      }
 
       /*
        * Add a connection handle to the list of all connections managed by this
@@ -450,7 +627,6 @@ namespace job {
         std::string output = "{";
         output += "\"$schema\": \"http://json-schema.org/draft-04/schema#\",";
         output += "\"sampleIndex\": \"" + std::to_string(sampleIndex) + "\",";
-        output += "\"sampleIndex\": \"" + std::to_string(sampleIndex) + "\",";
         output += "\"classificationLoss\": \"" + trainingErrorString.str() + "\",";
         output += "\"iteration\": \"" + std::to_string(iteration) + "\"";
         output += "}";
@@ -491,6 +667,86 @@ namespace job {
         output += "\"trainingError\": \"" + trainingErrorString.str() + "\",";
         output += "\"testingError\": \"" + testingErrorString.str() + "\",";
         output += "\"iteration\": \"" + std::to_string(z) + "\"";
+        output += "}";
+
+        size_t i = 0;
+        for (; i < connectionHandles.size(); i++)
+        {
+          try {
+            s->send(connectionHandles[i], output,
+                websocketpp::frame::opcode::TEXT);
+          } catch (...) {
+            // Remove connection handle from the connection list.
+            connectionHandles.erase(connectionHandles.begin() + i);
+          }
+        }
+      }
+
+      /*
+       * Send the current confusion matrix to all connected clients.
+       */
+      void SendConfusion(arma::Mat<int>& confusion)
+      {
+        if (connectionHandles.size() == 0)
+        {
+          return;
+        }
+
+        std::stringstream consufionString;
+        for (size_t i = 0; i < confusion.n_elem; i++)
+        {
+          consufionString << confusion(i);
+
+          if (i != (confusion.n_elem - 1))
+            consufionString << ";";
+        }
+
+        std::stringstream precisionString;
+        for (size_t i = 0; i < confusion.n_rows; i++)
+        {
+          double tp = confusion(i, i);
+          double fp = arma::accu(confusion.row(i)) - tp;
+
+          double precision = tp / (tp + fp);
+
+          if (precision != precision)
+            precision = 0;
+
+          precisionString << std::fixed << std::setprecision(2);
+          precisionString << precision << ";";
+        }
+
+        std::stringstream recallString;
+        for (size_t i = 0; i < confusion.n_rows; i++)
+        {
+          double tp = confusion(i, i);
+          double fn = arma::accu(confusion.col(i)) - tp;
+
+          double recall = tp / (tp + fn);
+
+          if (recall != recall)
+            recall = 0;
+
+          recallString << std::fixed << std::setprecision(2);
+          recallString << recall << ";";
+        }
+
+        double accuracy = (double) arma::accu(confusion.diag()) /
+            (double) arma::accu(confusion);
+
+        if (accuracy != accuracy)
+          accuracy = 0;
+
+        std::stringstream accuracyString;
+        accuracyString << std::fixed << std::setprecision(2);
+        accuracyString << accuracy;
+
+        std::string output = "{";
+        output += "\"$schema\": \"http://json-schema.org/draft-04/schema#\",";
+        output += "\"precision\": \"" + precisionString.str() + "\",";
+        output += "\"recall\": \"" + recallString.str() + "\",";
+        output += "\"accuracy\": \"" + accuracyString.str() + "\",";
+        output += "\"confusion\": \"" + consufionString.str() + "\"";
         output += "}";
 
         size_t i = 0;
@@ -670,6 +926,7 @@ namespace job {
         {
           std::string imageString = graphics::Mat2Image(
               arma::normalise(c.slice(i)) * 255);
+
           output += "\"layerActivation" + std::to_string(id + i) + "\": \"";
           output += websocketpp::base64_encode(imageString) + "\",";
         }
@@ -821,7 +1078,9 @@ namespace job {
       std::string content;
 
       // The dataset and the target.
-      arma::mat XTrain, YTrain, XTest, YTest;
+      arma::mat YTrain, YTest;
+
+      arma::cube XTrain, XTest;
 
       // The number of points in the dataset.
       arma::uword nPointsTrain, nPointsTest;
@@ -829,64 +1088,24 @@ namespace job {
       // The gradient of the first  and second convolution layer.
       arma::cube gradient0, gradient1;
 
-      // The network structure (layer and connections).
-      NeuronLayer<RectifierFunction, arma::cube>* inputLayerPtr;
-
-      ConvLayer<RectifierFunction>* convLayer0Ptr;
-
-      ConvConnection<NeuronLayer<RectifierFunction, arma::cube>,
-                 ConvLayer<RectifierFunction>,
-                 mlpack::ann::AdaDelta>* con1Ptr;
-
-      BiasLayer<>* biasLayer0Ptr;
-
-      BiasConnection<BiasLayer<>,
-                 ConvLayer<RectifierFunction>,
-                 mlpack::ann::AdaDelta,
-                 mlpack::ann::ZeroInitialization>* con1BiasPtr;
-
+      // The network structure.
+      ConvLayer<>* convLayer0Ptr;
+      BiasLayer2D<>* biasLayer0Ptr;
+      BaseLayer2D<RectifierFunction>* baseLayer0Ptr;
       PoolingLayer<>* poolingLayer0Ptr;
-
-      PoolingConnection<ConvLayer<RectifierFunction>,
-                    PoolingLayer<> >* con2Ptr;
-
-      ConvLayer<RectifierFunction>* convLayer1Ptr;
-
-      ConvConnection<PoolingLayer<>,
-                 ConvLayer<RectifierFunction>,
-                 mlpack::ann::AdaDelta>* con3Ptr = 0;
-
-      BiasLayer<>* biasLayer3Ptr;
-
-      BiasConnection<BiasLayer<>,
-                       ConvLayer<RectifierFunction>,
-                       mlpack::ann::AdaDelta,
-                       mlpack::ann::ZeroInitialization>* con3BiasPtr;
-
-      PoolingLayer<>* poolingLayer1;
-
-      PoolingConnection<ConvLayer<RectifierFunction>,
-                        PoolingLayer<> >* con4;
-
-      SoftmaxLayer<arma::mat>* outputLayerPtr;
-
-      FullConnection<PoolingLayer<>,
-                     SoftmaxLayer<arma::mat>,
-                     mlpack::ann::AdaDelta>* con5Ptr;
-
-      BiasLayer<>* biasLayer1Ptr;
-
-      FullConnection<BiasLayer<>,
-                 SoftmaxLayer<arma::mat>,
-                 mlpack::ann::AdaDelta,
-                 mlpack::ann::ZeroInitialization>* con5BiasPtr;
-
+      ConvLayer<>* convLayer1Ptr;
+      BiasLayer2D<>* biasLayer1Ptr;
+      BaseLayer2D<RectifierFunction>* baseLayer1Ptr;
+      PoolingLayer<>* poolingLayer1Ptr;
+      LinearMappingLayer<>* linearLayer0Ptr;
+      BiasLayer<>* biasLayer2Ptr;
+      SoftmaxLayer<>* softmaxLayer0Ptr;
       MulticlassClassificationLayer* finalOutputLayerPtr;
 
-      PoolingLayer<>* poolingLayer1Ptr;
+      //! The current network parameter;
+      arma::mat networkParameter;
 
-      PoolingConnection<ConvLayer<RectifierFunction>,
-                          PoolingLayer<> >* con4Ptr;
+      arma::mat meanSquaredGradient;
 
       //! Locally stored server object used for sending.
       server* s;
@@ -898,6 +1117,26 @@ namespace job {
       int sessionid;
 
       bool predictionAvailable;
+
+      arma::Mat<int> confusion;
+
+
+      arma::Mat<int> confusionClassification;
+
+      arma::mat confusionProps;
+
+      int confusionSample;
+
+      bool sendConfusion;
+
+      std::mutex m;
+
+      bool reset;
+
+      bool step;
+
+      size_t sampleIndex;
+
 };
 
   /*
@@ -956,56 +1195,66 @@ namespace job {
         m_server.set_access_channels(websocketpp::log::alevel::none);
         m_server.set_error_channels(websocketpp::log::alevel::fail);
 
-        // Load the train dataset.
-        XTrain.load(config::trainDataset);
 
-        if (XTrain.n_cols >= 784 && XTrain.n_cols <= 785)
+        arma::mat X;
+        // Load the train dataset.
+        X.load(config::trainDataset);
+
+        if (X.n_cols >= 784 && X.n_cols <= 785)
         {
-          XTrain = XTrain.t();
+          X = X.t();
         }
 
-        nPointsTrain = XTrain.n_cols;
+        nPointsTrain = X.n_cols;
 
         // Build the target matrix for the train dataset.
         YTrain = arma::zeros<arma::mat>(10, nPointsTrain);
         for (size_t i = 0; i < nPointsTrain; i++)
         {
-          size_t target = XTrain(0, i);
+          size_t target = X(0, i);
           YTrain.col(i)(target) = 1;
         }
 
-        XTrain.shed_row(0);
+        X.shed_row(0);
+
+
+
+        XTrain = arma::cube(28, 28, nPointsTrain);
 
         // Normalize each point since these are images of the train dataset.
         for (arma::uword i = 0; i < nPointsTrain; i++)
         {
-          XTrain.col(i) /= norm(XTrain.col(i), 2);
+          X.col(i) /= norm(X.col(i), 2);
+          XTrain.slice(i) = arma::mat(X.colptr(i), 28, 28);
         }
 
         // Load the test dataset.
-        XTest.load(config::testDataset);
+        X.load(config::testDataset);
 
-        if (XTest.n_cols >= 784 && XTest.n_cols <= 785)
+        if (X.n_cols >= 784 && X.n_cols <= 785)
         {
-          XTest = XTest.t();
+          X = X.t();
         }
 
-        nPointsTest = XTest.n_cols;
+        nPointsTest = X.n_cols;
 
         // Build the target matrix for the test dataset.
         YTest = arma::zeros<arma::mat>(10, nPointsTest);
         for (size_t i = 0; i < nPointsTest; i++)
         {
-          size_t target = XTest(0, i);
+          size_t target = X(0, i);
           YTest.col(i)(target) = 1;
         }
 
-        XTest.shed_row(0);
+        X.shed_row(0);
+
+        XTest = arma::cube(28, 28, nPointsTest);
 
         // Normalize each point since these are images of the test dataset.
         for (arma::uword i = 0; i < nPointsTest; i++)
         {
-          XTest.col(i) /= norm(XTest.col(i), 2);
+          X.col(i) /= norm(X.col(i), 2);
+          XTest.slice(i) = arma::mat(X.colptr(i), 28, 28);
         }
       }
 
@@ -1053,6 +1302,73 @@ namespace job {
           m_server.send(hdl, InitNewPage(jobQueue.size() - 1),
               websocketpp::frame::opcode::TEXT);
         }
+        else if(eventInfo.event == "confusion" && eventInfo.eventId >= 0)
+        {
+          jobQueue[uriInfo.id].ConfusionSamples(eventInfo.eventId);
+        }
+        else if(eventInfo.event == "step" && eventInfo.eventId >= 0)
+        {
+          // Set the correct job state.
+          int state = jobQueue[uriInfo.id].State();
+          if (state == 0)
+          {
+             // Stop the job, because it is already running.
+            jobQueue[uriInfo.id].State() = 2;
+          }
+
+          state = jobQueue[uriInfo.id].State();
+
+          jobQueue[uriInfo.id].Step() = true;
+
+          if (state == 2)
+          {
+            // Queue the job to be running next.
+            jobQueue[uriInfo.id].State() = 1;
+
+            if (jobQueue[uriInfo.id].jobState == 1)
+            {
+              io_service.dispatch(boost::move(JobWrapper(jobQueue[uriInfo.id])));
+            }
+            else
+            {
+              jobQueue[uriInfo.id].State() = 0;
+            }
+          }
+
+          jobQueue[uriInfo.id].SendState();
+        }
+        else if(eventInfo.event == "reset" && eventInfo.eventId >= 0)
+        {
+          jobQueue[uriInfo.id].Reset() = true;
+
+          // Set the correct job state.
+          int state = jobQueue[uriInfo.id].State();
+          if (state == 0)
+          {
+             // Stop the job, because it is already running.
+            jobQueue[uriInfo.id].State() = 2;
+          }
+
+          state = jobQueue[uriInfo.id].State();
+          jobQueue[uriInfo.id].Reset() = true;
+
+          if (state == 2)
+          {
+            // Queue the job to be running next.
+            jobQueue[uriInfo.id].State() = 1;
+
+            if (jobQueue[uriInfo.id].jobState == 1)
+            {
+              io_service.dispatch(boost::move(JobWrapper(jobQueue[uriInfo.id])));
+            }
+            else
+            {
+              jobQueue[uriInfo.id].State() = 0;
+            }
+          }
+
+          jobQueue[uriInfo.id].SendState();
+        }
         else if(eventInfo.event == "start" && eventInfo.eventId >= 0)
         {
           // Set the correct job state.
@@ -1096,7 +1412,8 @@ namespace job {
       int m_next_sessionid;
       server m_server;
 
-      arma::mat XTrain, XTest, YTrain, YTest;
+      arma::cube XTrain, XTest;
+      arma::mat YTrain, YTest;
       arma::uword nPointsTrain, nPointsTest;
   };
 }
