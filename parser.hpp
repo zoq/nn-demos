@@ -26,7 +26,10 @@ namespace parser {
                                      "prediction",
                                      "info",
                                      "start",
-                                     "state"};
+                                     "state",
+                                     "confusion",
+                                     "reset",
+                                     "step"};
 
   /*
    * Cuts off the delimiter (default) and everything that follows.
