@@ -16,7 +16,7 @@ namespace config {
   const static int port = 9972;
 
   // The deployment url.
-  const static std::string url = "http://virtual-artz.de/mnist/index.html";
+  const static std::string url = "http://kurg.org/mnist/index.html";
 
   // The train dataset to be loaded.
   const static std::string trainDataset = "mnist_train.csv";
