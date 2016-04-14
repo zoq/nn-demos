@@ -1,3 +1,7 @@
+.text-center {
+    text-align: center;
+}
+
 .actmap {
     display: block;
     width: 100%;
@@ -41,4 +45,50 @@
     .probsdiv:nth-child(11n) {
         margin-right: 0;
     }
+}
+
+
+td {
+    width: 12px;
+    position: relative;
+    padding: 0;
+    text-align: center;
+}
+td:after {
+    content: '';
+    display: block;
+    margin-top: 100%;
+}
+td .content {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: gold;
+    padding-top: 50%;
+    outline: thin solid
+}
+
+td:nth-child(12) .content {
+    background: transparent;
+}
+
+td .content:before{
+    content: '';
+    display: block;
+    margin-top: -10px;
+}
+
+tr:nth-child(12) td .content {
+    background: transparent;
+}
+
+.problabelrotated {
+    -ms-transform: rotate(-40deg);
+    -webkit-transform: rotate(-40deg);
+    transform: rotate(-40deg);
+    float: right;
+    margin-left: 20px;
+    background: transparent;
 }
