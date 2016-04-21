@@ -1,5 +1,5 @@
 /**
- * @file mnist.hpp
+ * @file mnist.cpp
  * @author Marcus Edel
  *
  * Demo to visualize the training process of a convolutional neural network.
@@ -21,7 +21,7 @@ int main(int argc, char **argv)
   // size_t worker = std::thread::hardware_concurrency();
 
   // Spawn worker using the specified number.
-  size_t worker = 3;
+  size_t worker = 4;
 
   for (size_t i = 0; i < worker; i++)
   {
