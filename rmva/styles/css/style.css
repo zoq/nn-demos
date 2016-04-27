@@ -1,0 +1,94 @@
+.text-center {
+    text-align: center;
+}
+
+.actmap {
+    display: block;
+    width: 100%;
+    margin-top: 5%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.probsdiv {
+    border: 1px solid #808080;
+    padding: 5px 5px !important;
+}
+
+@media all and (max-width: 600px) {
+    .probsdiv {
+        margin-right: 12.5%;
+        margin-bottom: 10%;
+    }
+
+    .probsdiv:nth-child(3n) {
+        margin-right: 0;
+    }
+}
+
+@media all and (min-width: 601px) and (max-width: 992px) {
+    .probsdiv {
+        margin-bottom: 3%;
+        margin-right: 4%;
+    }
+    .probsdiv:nth-child(5n) {
+        margin-right: 0;
+    }
+
+}
+
+@media all and (min-width: 993px) {
+    .probsdiv {
+        margin-right: .80%;
+        margin-bottom: 1%;
+    }
+    .probsdiv:nth-child(11n) {
+        margin-right: 0;
+    }
+}
+
+
+td {
+    width: 12px;
+    position: relative;
+    padding: 0;
+    text-align: center;
+}
+td:after {
+    content: '';
+    display: block;
+    margin-top: 100%;
+}
+td .content {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: gold;
+    padding-top: 50%;
+    outline: thin solid
+}
+
+td:nth-child(12) .content {
+    background: transparent;
+}
+
+td .content:before{
+    content: '';
+    display: block;
+    margin-top: -10px;
+}
+
+tr:nth-child(12) td .content {
+    background: transparent;
+}
+
+.problabelrotated {
+    -ms-transform: rotate(-40deg);
+    -webkit-transform: rotate(-40deg);
+    transform: rotate(-40deg);
+    float: right;
+    margin-left: 20px;
+    background: transparent;
+}

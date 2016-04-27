@@ -1,0 +1,437 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Recurrent Model of Visual Attention demo</title>
+    <script src="styles/js/jquery.min.js"></script>
+    <script src="styles/js/Chart.js"></script>
+    <link rel="stylesheet" href="styles/css/materialize.min.css">
+    <link rel="stylesheet" href="styles/css/style.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <script type="text/javascript">
+      var viewState = true;
+      var ws;
+      var locationState = true;
+      var locationSample = 0;
+      var locationValues = [];
+
+      function TrainingButtonFunction()
+      {
+        ws.send("/id=0&start=0");
+      }
+
+      function ResetButtonFunction()
+      {
+        ws.send("/id=0&reset=0");
+      }
+
+      function StepButtonFunction()
+      {
+        ws.send("/id=0&step=0");
+      }
+
+      function ViewButtonFunction()
+      {
+        if (viewState == true)
+        {
+          viewState = false;
+          document.getElementById('viewbtn').innerHTML = "Enable View Update";
+        }
+        else
+        {
+          viewState = true;
+          document.getElementById('viewbtn').innerHTML = "Disable View Update";
+        }
+      }
+
+      function ResetBorder()
+      {
+        for (var index = 0; index < (28 * 28); index++)
+        {
+          var element = document.getElementById("input" + index.toString());
+          if (element != null)
+          {
+            element.style.border = '1px solid black';
+          }
+        }
+      }
+
+      function CreateInputTable()
+      {
+        var body = document.getElementById('inputTable');
+
+        mainTable  = document.createElement('table');
+        mainTable.frame = "box";
+
+        tbl  = document.createElement('tbody');
+
+        for(var i = 0, currentID = 0; i < 28; i++)
+        {
+          var tr = tbl.insertRow();
+          for(var j = 0; j < 28; j++, currentID++)
+          {
+            var td = tr.insertCell();
+            var cell = document.createElement("div");
+
+            td.appendChild(cell);
+
+            td.style.border = '1px solid black';
+            td.style.borderRadius = '0px'
+            td.class = "content"
+            td.id = "input" + currentID.toString()
+          }
+        }
+
+        mainTable.appendChild(tbl)
+        body.appendChild(mainTable);
+      }
+
+      function CreateGlimpseTable()
+      {
+        var body = document.getElementById('glimpseTable');
+
+        mainTable  = document.createElement('table');
+        mainTable.frame = "box";
+
+        tbl  = document.createElement('tbody');
+
+        for(var i = 0, currentID = 0; i < 28; i++)
+        {
+          var tr = tbl.insertRow();
+          for(var j = 0; j < 28; j++, currentID++)
+          {
+            var td = tr.insertCell();
+
+            var cell = document.createElement("div");0
+
+            td.appendChild(cell);
+
+            td.style.border = '0px solid black';
+            td.style.borderRadius = '0px'
+            td.class = "content"
+            td.id = "glimpse" + currentID.toString()
+          }
+        }
+
+        mainTable.appendChild(tbl)
+        body.appendChild(mainTable);
+      }
+
+      function ShowGlimpse(glimpse, sample, ll, max)
+      {
+        for (var s = 0, idx = 10; s < 3; s++)
+        {
+          var inputValues = glimpse.slice(s * 64, (s + 1) * 64);
+
+          var maxValue = Math.max.apply(null, inputValues);
+
+          if (maxValue != 0)
+          {
+            for (var l = 0; l < inputValues.length; l++)
+              inputValues[l] /= maxValue;
+          }
+
+          for (var j = 0, k = 1; j < inputValues.length; j++, k++)
+          {
+            var element = document.getElementById("glimpse" + idx.toString());
+            if (element != null)
+            {
+              element.style.background = "rgba(0, 0, 0, " + (1 - parseFloat(inputValues[j]))  + ")";
+              element.style.border = '1px solid black';
+            }
+
+            if (k == 8)
+            {
+              idx += 21;
+              k = 0;
+            }
+            else
+            {
+              idx += 1;
+            }
+          }
+
+          idx += 28;
+        }
+      }
+
+      function ShowLocation(x, y, sample, ll, max)
+      {
+        ResetBorder();
+
+        var w = 8;
+        var h = 8;
+
+        if (sample != locationSample)
+          return;
+
+        for (var xx = 0; xx < w; xx++)
+        {
+          for (var yy = 0; yy < h; yy++)
+          {
+            var index = (x + xx) + ((y + yy) * 28);
+
+            var element = document.getElementById("input" + index.toString());
+
+            if (element != null)
+            {
+              if (yy == 0)
+              {
+                element.style.borderTop = "2px solid #00FF00";
+              }
+
+              if (xx == 0)
+              {
+                element.style.borderLeft = "2px solid #00FF00";
+              }
+
+              if (xx == (w - 1))
+              {
+                element.style.borderRight = "2px solid #00FF00";
+              }
+
+              if (yy == (h - 1))
+              {
+                element.style.borderBottom = "2px solid #00FF00";
+              }
+            }
+          }
+        }
+
+        // This is the last location.
+        if (ll == max && locationSample == sample)
+        {
+          HandleLocation(locationValues);
+        }
+      }
+
+      function HandleLocation(locations)
+      {
+        if (locations.length == 0)
+          return;
+
+        // Get the maximum number of pairs.
+        var max = 0;
+        for (; max < locations.length - 1; max += 2)
+        {
+          if (locations[max] == ":" || locations[max + 1] == ":")
+            break;
+        }
+
+        // We start with ll = 0, so we have to substract the max number of pairs by 2.
+        if (max > 0)
+        {
+          locationState = false;
+          max -= 2;
+        }
+
+        var sample = locationSample;
+
+        // Handle location.
+        for (var ll = 0, delay = 0; ll <= max; ll += 2, delay += 700)
+        {
+          var x = parseInt(locations[ll]);
+          var y = parseInt(locations[ll + 1]);
+
+          setTimeout((function(x, y, sample, ll, max) {
+                return function() { ShowLocation(x, y, sample, ll, max); }
+              })(x, y, sample, ll, max), delay);
+        }
+
+        // Handle glimpse.
+        for (var ll = 0, delay = 0; ll <= (max / 2); ll++, delay += 700)
+        {
+
+          var subGlimpse = locations.slice((max + 3) + (ll * 192), (max + 3) + (ll + 1) * 192);
+
+          setTimeout((function(subGlimpse, sample, ll, max) {
+                return function() { ShowGlimpse(subGlimpse, sample, ll, max); }
+              })(subGlimpse, ll, max), delay);
+        }
+      }
+
+      function Init()
+      {
+        if ("WebSocket" in window)
+        {
+          ws = new WebSocket("ws://ws.kurg.org/rmva" + location.search);
+
+          ws.onopen = function()
+          {
+            ws.send("/id=0&state=0");
+          };
+
+          ws.onmessage = function (evt)
+          {
+            if (viewState == false)
+            {
+              return;
+            }
+
+            jsonObj = JSON.parse(evt.data);
+            var jsonKeys = Object.keys(jsonObj);
+            for (var i = 0; i < jsonKeys.length; i++)
+            {
+              if (jsonKeys[i] == "redirect")
+              {
+                window.location.replace(jsonObj[jsonKeys[i]]);
+              }
+
+              if (jsonKeys[i] == "state")
+              {
+                if (jsonObj[jsonKeys[i]] === "0")
+                {
+                  document.getElementById('trainingbtn').innerHTML = "pause";
+                }
+                else if (jsonObj[jsonKeys[i]] === "1")
+                {
+                  document.getElementById('trainingbtn').innerHTML = "query_builder";
+                }
+                else if (jsonObj[jsonKeys[i]] === "2")
+                {
+                  document.getElementById('trainingbtn').innerHTML = "play_arrow";
+                }
+              }
+              else if (jsonKeys[i] == "sampleIndex")
+              {
+                var element = document.getElementById(jsonKeys[i]);
+                if (element != null)
+                {
+                  element.value = jsonObj["sampleIndex"];
+                }
+              }
+              else if (jsonKeys[i] == "input")
+              {
+                locationSample++;
+
+                var inputValues = jsonObj[jsonKeys[i]].split(";");
+
+                for (var j = 0; j < inputValues.length; j++)
+                {
+                  var element = document.getElementById("input" + j.toString());
+                  if (element != null)
+                  {
+                    element.style.background = "rgba(0, 0, 0, " + (1 - parseFloat(inputValues[j]))  + ")";
+                    element.style.border = '1px solid black';
+                  }
+                }
+              }
+              else if (jsonKeys[i] == "locationSample")
+              {
+                locationValues = jsonObj[jsonKeys[i]].split(";");
+
+                HandleLocation(locationValues);
+              }
+            }
+          };
+
+          ws.onclose = function()
+          {
+            console.info("Connection is closed...");
+          };
+        }
+
+        else
+        {
+           console.alert("WebSocket NOT supported by your Browser!");
+        }
+      }
+    </script>
+
+  </head>
+  <body onLoad="Init(); CreateInputTable(); CreateGlimpseTable();">
+  <div class="wrapper">
+
+    <h2 class="heading center">Recurrent Model of Visual Attention Demo</h2>
+    <div class="container">
+      <div class="col s12 m6">
+        <div class="card blue-grey darken-2">
+          <div class="card-content grey-text text-lighten-2">
+            <span class="card-title">Description</span>
+            <p>This demo trains a <b><a style="color: #ffffff;" href="http://papers.nips.cc/paper/5542-recurrent-models-of-visual-attention">novel recurrent neural network model</a></b> that is capable of extracting information from an image by adaptively selecting a sequence of regions or locations and only processing the selected regions at high resolution. We train the network on the <b><a style="color: #ffffff;" href="http://yann.lecun.com/exdb/mnist/">MNIST Dataset</a></b> (Mixed National Institute of Standards and Technology database) digits dataset and show the training process in your browser.</p>
+
+            <p>More precisely, we will use <b><a style="color: #ffffff;" href="http://mlpack.org">mlpack's</a></b> neural network architecture to show the training process of the so called Glimpse layer.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+        <div class="col s12 m6">
+          <div class="card blue-grey lighten-5">
+            <div class="card-content black-text">
+              <div class="settings--holder">
+                <div class="row">
+                  <form class="col s12">
+                    <div class="row">
+                      <div class="input-field col s12">
+
+                      <div class="input-field col s2">
+                        <a class="btn-floating waves-effect waves-light blue-grey darken-2"><i class="material-icons" onclick="ResetButtonFunction()">replay</i></a>
+                        <a class="btn-floating btn-large waves-effect waves-light blue-grey darken-2"><i id="trainingbtn" class="material-icons" onclick="TrainingButtonFunction()">play_arrow</i></a>
+                        <a class="btn-floating waves-effect waves-light blue-grey darken-2"><i class="material-icons" onclick="StepButtonFunction()">skip_next</i></a>
+                        </div>
+
+                        <div class="input-field col s1">
+                            <input id="sampleIndex" value="0" id="first_name2" type="text" class="validate" style="border-bottom: 0">
+                            <label class="active" for="first_name2" style="font-size: 1.0rem">Sample</label>
+                        </div>
+
+                        <div class="input-field col s2">
+                            <input value="0.01" id="first_name2" type="text" class="validate">
+                            <label class="active" for="first_name2" style="font-size: 1.0rem">Learning rate</label>
+                        </div>
+
+                        <div class="input-field col s2">
+                            <input value="ReLu" id="first_name2" type="text" class="validate">
+                            <label class="active" for="first_name2" style="font-size: 1.0rem">Activation</label>
+                        </div>
+
+                        <div class="input-field col s2">
+                            <input value="None" id="first_name2" type="text" class="validate">
+                            <label class="active" for="first_name2" style="font-size: 1.0rem">Regularization</label>
+                        </div>
+
+                        <div class="input-field col s2">
+                            <input value="RMSProp" id="first_name2" type="text" class="validate">
+                            <label class="active" for="first_name2" style="font-size: 1.0rem">Optimizer</label>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+         <div class="container">
+          <div class="col s12 m12">
+            <div class="card  blue-grey lighten-5">
+              <div class="row">
+
+              <div class="card-content black-text col s12 m1"></div>
+
+              <div class="card-content black-text col s12 m5">
+                <div id="inputTable"><center>Glimpse Layer</center></div>
+              </div>
+
+              <div class="card-content black-text col s12 m5">
+                <div id="glimpseTable"><center>Glimpse Layer Output</center></div>
+              </div>
+
+              <div class="card-content black-text col s12 m1"></div>
+
+              </div>
+
+            </div>
+          </div>
+        </div>
+        </div>
+
+  </div>
+  <script src="styles/js/materialize.min.js"></script>
+  </body>
+</html>
