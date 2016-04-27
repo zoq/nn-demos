@@ -58,10 +58,24 @@ set(mnist_source
     mnist/mnist.cpp
 )
 
+set(rmva_source
+    rmva/config.hpp
+    parser.hpp
+    graphics.hpp
+    rmva/job.hpp
+    rmva/rmva.cpp
+)
+
 # Define the executable and link against the libraries we need to build the
 # source.
 add_executable(mnist ${mnist_source})
 target_link_libraries(mnist ${Boost_LIBRARIES}
+                            ${ARMADILLO_LIBRARIES}
+                            ${MLPACK_LIBRARY}
+                            ${OpenCV_LIBS})
+
+add_executable(rmva ${rmva_source})
+target_link_libraries(rmva ${Boost_LIBRARIES}
                             ${ARMADILLO_LIBRARIES}
                             ${MLPACK_LIBRARY}
                             ${OpenCV_LIBS})
