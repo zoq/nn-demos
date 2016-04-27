@@ -224,7 +224,7 @@ namespace job {
         const double eps = 1e-8;
 
         bool predictOnly = true;
-        for (size_t z = 0; z < 10; z++)
+        for (size_t z = 0; z < 5; z++)
         {
           bool predictOnly = true;
           SendState();
