@@ -188,6 +188,17 @@ namespace job {
         // Initilize the confusion matrix probabilities.
         confusionProps = arma::zeros<arma::mat>(10 * 10, 25);
 
+        // Initilize the confusion matrix.
+        confusion = arma::Mat<int>(10, 10);
+
+        // Initilize the confusion matrix samples.
+        confusionClassification = arma::zeros<arma::Mat<int> >(10 * 10, 25);
+
+        // Initilize the confusion matrix probabilities.
+        confusionProps = arma::zeros<arma::mat>(10 * 10, 25);
+
+        sampleIndex = 0;
+
         // Send current job state.
         SendState();
       }
@@ -259,36 +270,138 @@ namespace job {
         opt.Shuffle() = true;
         opt.BatchSize() = 1;
 
-        for (size_t z = 0; z < 500; z++)
+        // We set the default prediction mode.
+        bool predict = true;
+
+        if (sampleIndex == 0 || reset)
+        {
+          reset = false;
+          sampleIndex = 0;
+        }
+
+        for (size_t z = 0; z < 100; z++)
         {
           SendState();
-          SendTrainInfo(z, z);
+
+          data::Save("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+
+          arma::mat locationInput = XTrain.col(indexTrain(z));
+          arma::mat locationTarget;
+          locationTarget << YTrain(indexTrain(z));
+
+          SendInput(locationInput);
+
+          net.Train(locationInput, locationTarget, opt);
+
+          arma::mat location = net.Location();
+          arma::mat tempInput = arma::zeros(28, 28);
+          SendLocation(tempInput, location, 1, 8, 1, 2);
+
+          data::Load("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
 
           if (state == 2)
           {
             break;
           }
 
-          arma::mat trainInput = XTrain.col(indexTrain(z));
-          arma::mat trainTarget;
-          trainTarget << YTrain(indexTrain(z));
-
-          SendInput(trainInput);
-
-          net.Train(trainInput, trainTarget, opt);
-
-          arma::mat location = net.Location();
-          arma::mat tempInput = arma::zeros(28, 28);
-          SendLocation(tempInput, location, 1, 8, 1, 2);
-
-          if (step)
+          if (!step)
           {
-            state = 2; // Stop
-            step = false;
-            break;
+            confusion.zeros();
+            confusionClassification.zeros();
+            confusionProps.zeros();
           }
 
-          std::this_thread::sleep_for(std::chrono::seconds(10));
+          predict = true;
+
+          for (size_t i = 0; i < nPointsTrain; i++)
+          {
+            sampleIndex++;
+            SendTrainInfo(z, sampleIndex);
+
+            if (state == 2)
+            {
+              break;
+            }
+
+            if (((i % 1000) == 0) || step)
+              predict = true;
+
+            m.lock();
+
+            arma::mat trainInput = XTrain.col(indexTrain(i));
+            arma::mat trainTarget;
+            trainTarget << YTrain(indexTrain(i));
+
+            arma::mat trainPredictionOutput;
+            net.Predict(trainInput, trainPredictionOutput);
+
+            if (trainPredictionOutput.is_finite())
+            {
+              arma::uword trainPredictionIndexMax, trainTargetIndexMax;
+              trainPredictionOutput.max(trainPredictionIndexMax);
+
+              trainTargetIndexMax = trainTarget(0) - 1;
+
+              confusion(trainTargetIndexMax, trainPredictionIndexMax)++;
+
+              // Get the sample class.
+              arma::uword confusionClassIndex = sub2ind(10, 10,
+                  trainTargetIndexMax, trainPredictionIndexMax);
+
+              // Get the current sample index.
+              arma::uword confusionSampleIndex = confusionClassification(
+                  confusionClassIndex, 0);
+
+              // Set the current sample.
+              confusionClassification(confusionClassIndex,
+                (confusionSampleIndex % 18) + 1) = indexTrain(i);
+
+              // Set the current prediction propability.
+              confusionProps(confusionClassIndex,
+                  (confusionSampleIndex % 18) + 1) = trainPredictionOutput(
+                  trainPredictionIndexMax);
+
+              // Increase the sample index.
+              confusionClassification(confusionClassIndex, 0)++;
+              confusionProps(confusionClassIndex, 0)++;
+            }
+
+            m.unlock();
+
+            if (predict || ((i % 1000) == 0))
+            {
+              SendConfusion(confusion);
+
+              predict = false;
+            }
+
+            if ((i % 15000) == 0)
+            {
+              data::Save("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+
+              locationInput = XTrain.col(indexTrain(i));
+              locationTarget(0) = YTrain(indexTrain(i));
+
+              SendInput(locationInput);
+
+              net.Train(locationInput, locationTarget, opt);
+
+              arma::mat location = net.Location();
+              arma::mat tempInput = arma::zeros(28, 28);
+              SendLocation(tempInput, location, 1, 8, 1, 2);
+
+              data::Load("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+            }
+
+            if (step)
+            {
+              state = 2; // Stop
+              step = false;
+              break;
+            }
+          }
+
+          indexTrain = arma::shuffle(indexTrain);
         }
 
         state = 2; // Stop
@@ -325,6 +438,72 @@ namespace job {
       }
 
       /*
+       * Send the confusion samples of the given id to all connected clients.
+       */
+      void ConfusionSamples(int id)
+      {
+        m.lock();
+
+        if (confusionClassification.empty())
+        {
+          m.unlock();
+          return;
+        }
+
+        sendConfusion = true;
+        size_t classIndex = 0;
+
+        if (id <= 9)
+        {
+          classIndex = sub2ind(10, 10, id, 0);
+        }
+        else
+        {
+          std::string idStr = std::to_string(id);
+          std::string rowStr(1, idStr.at(1));
+          std::string colStr(1, idStr.at(0));
+
+          classIndex = sub2ind(10, 10, std::stoi(rowStr), std::stoi(colStr));
+        }
+
+        for (size_t j = 1, sampleId = 0; j < confusionClassification.n_cols; j++)
+        {
+          if (confusionClassification(classIndex, j) != 0)
+          {
+            arma::mat input = XTrain.col(
+                confusionClassification(classIndex, j));
+            input.reshape(28, 28);
+
+            std::stringstream samplePropConfusion;
+            samplePropConfusion << std::fixed << std::setprecision(2);
+            samplePropConfusion << confusionProps(classIndex, j);
+
+            std::string output = "{";
+            output += "\"$schema\": \"http://json-schema.org/draft-04/schema#\",";
+            output += "\"samplePropConfusion" + std::to_string(sampleId) + "\": \"" + samplePropConfusion.str() + "\",";
+            std::string imageString = graphics::Mat2Image(arma::normalise(input) * 255);
+            output += "\"sampleConfusion" + std::to_string(sampleId++) + "\": \"";
+            output += websocketpp::base64_encode(imageString) + "\"";
+            output += "}";
+
+            size_t i = 0;
+            for (; i < connectionHandles.size(); i++)
+            {
+              try {
+                s->send(connectionHandles[i], output,
+                    websocketpp::frame::opcode::TEXT);
+              } catch (...) {
+                // Remove connection handle from the connection list.
+                connectionHandles.erase(connectionHandles.begin() + i);
+              }
+            }
+          }
+        }
+
+        m.unlock();
+      }
+
+      /*
        * Send the current state to all connected clients.
        */
       void SendState()
@@ -355,6 +534,97 @@ namespace job {
       int jobState;
 
     private:
+      /*
+       * Get the continues index of the given row col.
+       */
+      size_t sub2ind(const size_t rows,
+                     const size_t cols,
+                     const size_t row,
+                     const size_t col)
+      {
+         return row*cols+col;
+      }
+
+       /*
+       * Send the current confusion matrix to all connected clients.
+       */
+      void SendConfusion(arma::Mat<int>& confusion)
+      {
+        if (connectionHandles.size() == 0)
+        {
+          return;
+        }
+
+        std::stringstream consufionString;
+        for (size_t i = 0; i < confusion.n_elem; i++)
+        {
+          consufionString << confusion(i);
+
+          if (i != (confusion.n_elem - 1))
+            consufionString << ";";
+        }
+
+        std::stringstream precisionString;
+        for (size_t i = 0; i < confusion.n_rows; i++)
+        {
+          double tp = confusion(i, i);
+          double fp = arma::accu(confusion.row(i)) - tp;
+
+          double precision = tp / (tp + fp);
+
+          if (precision != precision)
+            precision = 0;
+
+          precisionString << std::fixed << std::setprecision(2);
+          precisionString << precision << ";";
+        }
+
+        std::stringstream recallString;
+        for (size_t i = 0; i < confusion.n_rows; i++)
+        {
+          double tp = confusion(i, i);
+          double fn = arma::accu(confusion.col(i)) - tp;
+
+          double recall = tp / (tp + fn);
+
+          if (recall != recall)
+            recall = 0;
+
+          recallString << std::fixed << std::setprecision(2);
+          recallString << recall << ";";
+        }
+
+        double accuracy = (double) arma::accu(confusion.diag()) /
+            (double) arma::accu(confusion);
+
+        if (accuracy != accuracy)
+          accuracy = 0;
+
+        std::stringstream accuracyString;
+        accuracyString << std::fixed << std::setprecision(2);
+        accuracyString << accuracy;
+
+        std::string output = "{";
+        output += "\"$schema\": \"http://json-schema.org/draft-04/schema#\",";
+        output += "\"precision\": \"" + precisionString.str() + "\",";
+        output += "\"recall\": \"" + recallString.str() + "\",";
+        output += "\"accuracy\": \"" + accuracyString.str() + "\",";
+        output += "\"confusion\": \"" + consufionString.str() + "\"";
+        output += "}";
+
+        size_t i = 0;
+        for (; i < connectionHandles.size(); i++)
+        {
+          try {
+            s->send(connectionHandles[i], output,
+                websocketpp::frame::opcode::TEXT);
+          } catch (...) {
+            // Remove connection handle from the connection list.
+            connectionHandles.erase(connectionHandles.begin() + i);
+          }
+        }
+      }
+
 
       /*
        * Send the current glimpse parameter to all connected clients.
@@ -676,7 +946,6 @@ namespace job {
       bool step;
 
       size_t sampleIndex;
-
 };
 
   /*
@@ -735,8 +1004,8 @@ namespace job {
         m_server.set_access_channels(websocketpp::log::alevel::none);
         m_server.set_error_channels(websocketpp::log::alevel::fail);
 
-        XTrain.load("");
-        YTrain.load("");
+        XTrain.load("/home/marcus/src/mlpack_work/build/mnist_large.csv");
+        YTrain.load("/home/marcus/src/mlpack_work/build/mnist_large_target.csv");
 
         XTrain.reshape(28 * 28, 50000);
 
@@ -819,6 +1088,10 @@ namespace job {
 
           jobQueue[uriInfo.id].SendState();
         }
+        else if(eventInfo.event == "confusion" && eventInfo.eventId >= 0)
+        {
+          jobQueue[uriInfo.id].ConfusionSamples(eventInfo.eventId);
+        }
         else if(eventInfo.event == "reset" && eventInfo.eventId >= 0)
         {
           jobQueue[uriInfo.id].Reset() = true;
@@ -895,11 +1168,6 @@ namespace job {
       server m_server;
 
       arma::mat XTrain, XTest;
-
-      // arma::mat trainingData, labels;
-
-
-
       arma::mat YTrain, YTest;
       arma::uword nPointsTrain, nPointsTest;
   };
