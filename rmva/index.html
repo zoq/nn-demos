@@ -15,6 +15,7 @@
       var locationState = true;
       var locationSample = 0;
       var locationValues = [];
+      var delay = 700;
 
       function TrainingButtonFunction()
       {
@@ -154,6 +155,16 @@
 
           idx += 28;
         }
+
+        if (ll <= (max / 2) && locationSample == sample)
+        {
+          ll += 1;
+          var subGlimpse = locationValues.slice((max + 3) + (ll * 192), (max + 3) + (ll + 1) * 192);
+
+          setTimeout((function(subGlimpse, sample, ll, max) {
+              return function() { ShowGlimpse(subGlimpse, sample, ll, max); }
+            })(subGlimpse, ll, max), delay);
+        }
       }
 
       function ShowLocation(x, y, sample, ll, max)
@@ -204,6 +215,16 @@
         {
           HandleLocation(locationValues);
         }
+        else
+        {
+          ll += 2;
+          var x = parseInt(locationValues[ll]);
+          var y = parseInt(locationValues[ll + 1]);
+
+          setTimeout((function(x, y, sample, ll, max) {
+                return function() { ShowLocation(x, y, sample, ll, max); }
+              })(x, y, sample, ll, max), delay);
+        }
       }
 
       function HandleLocation(locations)
@@ -228,27 +249,14 @@
 
         var sample = locationSample;
 
-        // Handle location.
-        for (var ll = 0, delay = 0; ll <= max; ll += 2, delay += 700)
-        {
-          var x = parseInt(locations[ll]);
-          var y = parseInt(locations[ll + 1]);
 
-          setTimeout((function(x, y, sample, ll, max) {
-                return function() { ShowLocation(x, y, sample, ll, max); }
-              })(x, y, sample, ll, max), delay);
-        }
+        var x = parseInt(locations[0]);
+        var y = parseInt(locations[1]);
 
-        // Handle glimpse.
-        for (var ll = 0, delay = 0; ll <= (max / 2); ll++, delay += 700)
-        {
+        ShowLocation(x, y, sample, 0, max);
 
-          var subGlimpse = locations.slice((max + 3) + (ll * 192), (max + 3) + (ll + 1) * 192);
-
-          setTimeout((function(subGlimpse, sample, ll, max) {
-                return function() { ShowGlimpse(subGlimpse, sample, ll, max); }
-              })(subGlimpse, ll, max), delay);
-        }
+        var subGlimpse = locations.slice((max + 3), (max + 3) + 192);
+        ShowGlimpse(subGlimpse, sample, 0, max);
       }
 
       function Init()
