@@ -259,6 +259,75 @@
         ShowGlimpse(subGlimpse, sample, 0, max);
       }
 
+      function TableActionIn(element)
+      {
+        // Reset the sample images and the labels.
+        for (var i = 0; i <= 17; i++)
+        {
+          var sampleElement = document.getElementById("sampleConfusion" + i.toString());
+          if (sampleElement != null)
+          {
+            sampleElement.setAttribute( 'src', "");
+            sampleElement.style.visibility = "hidden";
+          }
+
+          var sampleElement = document.getElementById("samplePropConfusion" + i.toString());
+          if (sampleElement != null)
+          {
+            sampleElement.style.visibility = "hidden";
+          }
+        }
+
+        // Set the active cell border.
+        var id = element.id.substring(9)
+        element.style.border = "2px solid black"
+
+        if (id.length < 2)
+        {
+          var element = document.getElementById("pred0");
+          element.style.fontWeight = "bold";
+
+          var element = document.getElementById("actual" + id.toString());
+          element.style.fontWeight = "bold";
+        }
+        else
+        {
+          var element = document.getElementById("pred" + id[0].toString());
+          element.style.fontWeight = "bold";
+
+          var element = document.getElementById("actual" + id[1].toString());
+          element.style.fontWeight = "bold";
+        }
+
+        ws.send("/id=0&confusion=" + id);
+      }
+
+      function TableActionOut(element)
+      {
+        var id = element.id.substring(9)
+
+        // Reset the active cell border.
+        element.style.border = "1px solid black"
+
+        // Reset the active cell.
+        if (id.length < 2)
+        {
+          var element = document.getElementById("pred0");
+          element.style.fontWeight = "normal";
+
+          var element = document.getElementById("actual" + id.toString());
+          element.style.fontWeight = "normal";
+        }
+        else
+        {
+          var element = document.getElementById("pred" + id[0].toString());
+          element.style.fontWeight = "normal";
+
+          var element = document.getElementById("actual" + id[1].toString());
+          element.style.fontWeight = "normal";
+        }
+      }
+
       function Init()
       {
         if ("WebSocket" in window)
@@ -286,7 +355,22 @@
                 window.location.replace(jsonObj[jsonKeys[i]]);
               }
 
-              if (jsonKeys[i] == "state")
+              if (jsonKeys[i].indexOf("layerActivation") > -1 ||
+                  jsonKeys[i].indexOf("layerWeight") > -1 ||
+                  jsonKeys[i].indexOf("layerGradient") > -1 ||
+                  jsonKeys[i].indexOf("sampleConfusion") > -1 ||
+                  jsonKeys[i].indexOf("predictionActivation") > -1)
+              {
+                var element = document.getElementById(jsonKeys[i]);
+                if (element == null)
+                {
+                  continue;
+                }
+
+                element.setAttribute( 'src', 'data:image/png;base64,' + jsonObj[jsonKeys[i]]);
+                element.style.visibility = "visible";
+              }
+              else if (jsonKeys[i] == "state")
               {
                 if (jsonObj[jsonKeys[i]] === "0")
                 {
@@ -307,6 +391,155 @@
                 if (element != null)
                 {
                   element.value = jsonObj["sampleIndex"];
+                }
+              }
+              else if (jsonKeys[i] == "confusion")
+              {
+                var confusionValues = jsonObj[jsonKeys[i]].split(";");
+
+                var sampleSum = 0;
+                for (var j = 0; j < confusionValues.length; j++)
+                {
+                  sampleSum += parseInt(confusionValues[j]);
+                }
+
+                for (var j = 0; j < confusionValues.length; j++)
+                {
+                  var element = document.getElementById(jsonKeys[i] + j.toString());
+                  if (element != null)
+                  {
+                    element.innerHTML = confusionValues[j];
+
+                    if (j != 0 && j != 11 && j != 22 && j != 33 &&
+                        j != 44 && j != 55 && j != 66 && j != 77 &&
+                        j != 88 && j!= 99)
+                    {
+                      var ratio = confusionValues[j] / sampleSum * 100;
+
+                      if (ratio < 0.7)
+                      {
+                        element.style.background = "transparent";
+                      }
+                      else if (ratio < 0.8)
+                      {
+                        element.style.background = "rgba(239, 83, 80, 0.2)";
+                      }
+                      else if (ratio < 1.6)
+                      {
+                        element.style.background = "rgba(239, 83, 80, 0.4)";
+                      }
+                      else if (ratio < 2.0)
+                      {
+                        element.style.background = "rgba(239, 83, 80, 0.6)";
+                      }
+                      else if (ratio < 3.2)
+                      {
+                        element.style.background = "rgba(239, 83, 80, 0.9)";
+                      }
+                    }
+                  }
+                }
+              }
+              else if (jsonKeys[i].indexOf("predictionValues") > -1)
+              {
+                var predictionValues = jsonObj[jsonKeys[i]].split("-");
+
+                for (var j = 0; j < predictionValues.length - 1; j++)
+                {
+                  var element = document.getElementById(jsonKeys[i] + j.toString());
+                  if (element != null)
+                  {
+                    element.innerHTML = predictionValues[j];
+                    if (predictionValues[j] == predictionValues[predictionValues.length - 1])
+                    {
+                      element.style.backgroundColor = "#00CC33";
+                    }
+                    else
+                    {
+                      element.style.backgroundColor = "#CC0000";
+                    }
+                  }
+                }
+              }
+              else if (jsonKeys[i].indexOf("precision") > -1 ||
+                      jsonKeys[i].indexOf("recall") > -1 ||
+                      jsonKeys[i].indexOf("accuracy") > -1)
+              {
+                var precisionValues = jsonObj[jsonKeys[i]].split(";");
+
+                for (var j = 0; j < precisionValues.length; j++)
+                {
+                  var element = document.getElementById(jsonKeys[i] + j.toString());
+                  if (element != null)
+                  {
+                    element.innerHTML = precisionValues[j];
+
+                    var precisionValue = parseFloat(precisionValues[j]);
+
+                    if (isNaN(precisionValue))
+                      continue;
+
+                    if (precisionValue >= 0.9)
+                    {
+                      element.style.background = "#64BD75";
+                    }
+                    else if (precisionValue > 0.8)
+                    {
+                      element.style.background = "rgba(100, 189, 9, 0.8)";
+                    }
+                    else if (precisionValue > 0.7)
+                    {
+                      element.style.background = "rgba(100, 189, 9, 0.7)";
+                    }
+                    else if (precisionValue > 0.65)
+                    {
+                      element.style.background = "rgba(100, 189, 9, 0.65)";
+                    }
+                    else if (precisionValue > 0.6)
+                    {
+                      element.style.background = "rgba(239, 83, 80, 0.3)";
+                    }
+                    else if (precisionValue > 0.5)
+                    {
+                      element.style.background = "rgba(239, 83, 80, 0.6)";
+                    }
+                    else if (precisionValue > 0.4)
+                    {
+                      element.style.background = "rgba(239, 83, 80, 0.8)";
+                    }
+                    else if (precisionValue > 0.3)
+                    {
+                      element.style.background = "rgba(239, 83, 80, 1.0)";
+                    }
+                    else
+                    {
+                      element.style.background = "#ff3232";
+                    }
+                  }
+                }
+              }
+              else if (jsonKeys[i].indexOf("samplePropConfusion") > -1)
+              {
+                var element = document.getElementById(jsonKeys[i]);
+                if (element == null)
+                {
+                  continue;
+                }
+
+                element.innerHTML = jsonObj[jsonKeys[i]];
+                element.style.visibility = "visible";
+              }
+              else if (jsonKeys[i].indexOf("probValues") > -1)
+              {
+                var probValues = jsonObj[jsonKeys[i]].split("-");
+
+                for (var j = 0; j < probValues.length - 1; j++)
+                {
+                  var element = document.getElementById("predictionValues" + jsonKeys[i].slice(10) + j.toString());
+                  if (element != null)
+                  {
+                    element.style.width = ((probValues[j] * 100 | 0))  + "%";
+                  }
                 }
               }
               else if (jsonKeys[i] == "input")
@@ -415,29 +648,712 @@
         </div>
       </div>
 
-         <div class="container">
-          <div class="col s12 m12">
-            <div class="card  blue-grey lighten-5">
-              <div class="row">
+       <div class="container">
+        <div class="col s12 m12">
+          <div class="card  blue-grey lighten-5">
+            <div class="row">
 
-              <div class="card-content black-text col s12 m1"></div>
+            <div class="card-content black-text col s12 m1"></div>
 
-              <div class="card-content black-text col s12 m5">
-                <div id="inputTable"><center>Glimpse Layer</center></div>
+            <div class="card-content black-text col s12 m5">
+              <div id="inputTable"><center>Glimpse Layer</center></div>
+            </div>
+
+            <div class="card-content black-text col s12 m5">
+              <div id="glimpseTable"><center>Glimpse Layer Output</center></div>
+            </div>
+
+            <div class="card-content black-text col s12 m1"></div>
+
+            </div>
+
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <div class="container">
+        <div class="col s12 m7">
+          <div class="card  blue-grey lighten-5">
+            <div class="row">
+            <div class="card-content black-text  col s12 m7">
+              <table>
+
+                  <tbody>
+                  <tr>
+                    <td>
+                      <div class="content" align="right" style="-webkit-transform: rotate(-30deg); background: transparent; outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="pred0" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;0 </div>
+                    </td>
+                    <td>
+                      <div id="pred1" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;1 </div>
+                    </td>
+                    <td>
+                      <div id="pred2" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;2 </div>
+                    </td>
+                    <td>
+                      <div id="pred3" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;3 </div>
+                    </td>
+                    <td>
+                      <div id="pred4" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;4 </div>
+                    </td>
+                    <td>
+                      <div id="pred5" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;5 </div>
+                    </td>
+                    <td>
+                      <div id="pred6" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;6 </div>
+                    </td>
+                    <td>
+                      <div id="pred7" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;7 </div>
+                    </td>
+                    <td>
+                      <div id="pred8" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;8 </div>
+                    </td>
+                    <td>
+                      <div id="pred9" class="content problabelrotated" style="background: transparent; outline: none">pred&nbsp;9 </div>
+                    </td>
+                    <td>
+                      <div class="content" style="background: transparent; outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content problabelrotated" style="background: transparent; outline: none">TPR</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual0"  class="content" style="background: transparent; outline: none">act 0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion0" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion10" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion20" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion30" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion40" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion50" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion60" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion70" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion80" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion90" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall0"  class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual1" class="content" style="background: transparent; outline: none">act 1</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion1" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion11" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion21" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion31" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion41" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion51" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion61" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion71" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion81" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion91" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall1" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td>
+                      <div id="actual2" class="content" style="background: transparent; outline: none">act 2</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion2" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion12" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion22" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion32" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion42" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion52" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion62" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion72" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion82" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion92" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall2"  class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual3" class="content" style="background: transparent; outline: none">act 3</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion3" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion13" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion23" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion33" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion43" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion53" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion63" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion73" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion83" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion93" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall3" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual4" class="content" style="background: transparent; outline: none">act 4</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion4" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion14" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion24" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion34" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion44" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion54" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion64" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion74" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion84" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion94" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall4" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual5" class="content" style="background: transparent; outline: none">act 5</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion5" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion15" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion25" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion35" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion45" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion55" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion65" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion75" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion85" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion95" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall5" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual6" class="content" style="background: transparent; outline: none">act 6</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion6" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion16" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion26" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion36" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion46" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion56" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion66" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion76" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion86" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion96" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall6" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual7" class="content" style="background: transparent; outline: none">act 7</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion7" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion17" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion27" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion37" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion47" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion57" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion67" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion77" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion87" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion97" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall7" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual8" class="content" style="background: transparent; outline: none">act 8</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion8" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion18" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion28" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion38" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion48" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion58" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion68" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion78" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion88" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion98" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall8" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="actual9" class="content" style="background: transparent; outline: none">act 9</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion9" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion19" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion29" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion39" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion49" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion59" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion69" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion79" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion89" class="content" style="background: transparent;">0</div>
+                    </td>
+                    <td>
+                      <div onmouseover="TableActionIn(this)" onmouseout="TableActionOut(this)" id="confusion99" class="content" style="background: #64BD75;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="recall9" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none">ACC </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="content" style="background: transparent; outline: none">PPV</div>
+                    </td>
+                    <td>
+                      <div id="precision0" class="content" style="background: #ef5350;" >0</div>
+                    </td>
+                    <td>
+                      <div id="precision1" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision2" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision3" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision4" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision5" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision6" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision7" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision8" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div id="precision9" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                    <td>
+                      <div class="content" style="outline: none"></div>
+                    </td>
+                    <td>
+                      <div id="accuracy0" class="content" style="background: #ef5350;">0</div>
+                    </td>
+                  </tr>
+                  </tbody>
+              </table>
+            </div>
+
+            <div class="card-content black-text col s12 m5">
+            <span class="card-title black-text">Confusion Samples <label class="card-title black-text" style="font-size: 0.7rem">(hover mouse over confusion matrix)</label></span>
+              <div class="row" style="border: 1px solid black; padding: 34px; display: block; margin: 0 auto;">
+
+             <div class="col s12 m6 l2">
+                      <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion0" />
+                      <div>
+                        <div id="samplePropConfusion0" class="text-center" style="visibility: hidden;">-</div>
+                    </div>
+            </div>
+
+                <div class="col s12 m3 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion1" />
+                  <div>
+                    <div id="samplePropConfusion1" class="text-center" style="visibility: hidden;">-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m3 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion2" />
+                  <div>
+                    <div id="samplePropConfusion2" class="text-center" style="visibility: hidden;">-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m3 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion3" />
+                  <div>
+                    <div id="samplePropConfusion3" class="text-center" style="visibility: hidden;">-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m3 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion4" />
+                  <div>
+                    <div id="samplePropConfusion4" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion5" />
+                  <div>
+                    <div id="samplePropConfusion5" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion6" />
+                  <div>
+                    <div id="samplePropConfusion6" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion7" />
+                  <div>
+                    <div id="samplePropConfusion7" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion8" />
+                  <div>
+                    <div id="samplePropConfusion8" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion9" />
+                  <div>
+                    <div id="samplePropConfusion9" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion10" />
+                  <div>
+                    <div id="samplePropConfusion10" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                  <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion11" />
+                  <div>
+                    <div id="samplePropConfusion11" class="text-center" style="visibility: hidden;" >-</div>
+                  </div>
+                </div>
+
+                <div class="col s12 m6 l2">
+                <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion12" />
+                <div>
+                  <div id="samplePropConfusion12" class="text-center" style="visibility: hidden;" >-</div>
+                </div>
               </div>
 
-              <div class="card-content black-text col s12 m5">
-                <div id="glimpseTable"><center>Glimpse Layer Output</center></div>
+              <div class="col s12 m6 l2">
+                <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion13" />
+                <div>
+                  <div id="samplePropConfusion13" class="text-center" style="visibility: hidden;" >-</div>
+                </div>
               </div>
 
-              <div class="card-content black-text col s12 m1"></div>
-
+              <div class="col s12 m6 l2">
+                <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion14" />
+                <div>
+                  <div id="samplePropConfusion14" class="text-center" style="visibility: hidden;" >-</div>
+                </div>
               </div>
 
+              <div class="col s12 m6 l2">
+                <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion15" />
+                <div>
+                  <div id="samplePropConfusion15" class="text-center" style="visibility: hidden;" >-</div>
+                </div>
+              </div>
+
+              <div class="col s12 m6 l2">
+                <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion16" />
+                <div>
+                  <div id="samplePropConfusion16" class="text-center" style="visibility: hidden;" >-</div>
+                </div>
+              </div>
+
+              <div class="col s12 m6 l2">
+                <img style="display: block; margin: 0 auto; visibility: hidden;" width="55" height="55" id="sampleConfusion17" />
+                <div>
+                  <div id="samplePropConfusion17" class="text-center" style="visibility: hidden;" >-</div>
+                </div>
+              </div>
+
+              </div>
             </div>
           </div>
         </div>
-        </div>
+      </div>
+    </div>
 
   </div>
   <script src="styles/js/materialize.min.js"></script>
