@@ -82,7 +82,7 @@
           element.style.fontWeight = "bold";
         }
 
-        ws.send("/id=0&confusion=" + id);        
+        ws.send("/id=0&confusion=" + id);
       }
 
       function TableActionOut(element)
@@ -158,7 +158,7 @@
                 var confusionValues = jsonObj[jsonKeys[i]].split(";");
 
                 var sampleSum = 0;
-                for (var j = 0; j < confusionValues.length; j++)     
+                for (var j = 0; j < confusionValues.length; j++)
                 {
                   sampleSum += parseInt(confusionValues[j]);
                 }
