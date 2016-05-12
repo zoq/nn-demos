@@ -195,7 +195,7 @@ namespace job {
         }
         else
         {
-          data::Load("model_" + std::to_string(sessionid) + ".xml",
+          data::Load("cnn_model_" + std::to_string(sessionid) + ".xml",
               "cnn_model", net);
         }
 
@@ -448,7 +448,7 @@ namespace job {
                 std::cout << "error: sort_index(): detected non-finite values \n";
               }
             }
-          
+
             if (step)
             {
               state = 2;
@@ -467,7 +467,7 @@ namespace job {
           SendTrainingStatus(z);
         }
 
-        data::Save("model_" + std::to_string(sessionid) + ".xml", "cnn_model",
+        data::Save("cnn_model_" + std::to_string(sessionid) + ".xml", "cnn_model",
             net);
 
         state = 2; // Stop

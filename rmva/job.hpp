@@ -283,7 +283,7 @@ namespace job {
         {
           SendState();
 
-          data::Save("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+          data::Save("rmva_model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
 
           arma::mat locationInput = XTrain.col(indexTrain(z));
           arma::mat locationTarget;
@@ -297,7 +297,7 @@ namespace job {
           arma::mat tempInput = arma::zeros(28, 28);
           SendLocation(tempInput, location, 1, 8, 1, 2);
 
-          data::Load("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+          data::Load("rmva_model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
 
           if (state == 2)
           {
@@ -377,7 +377,7 @@ namespace job {
 
             if ((i % 15000) == 0)
             {
-              data::Save("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+              data::Save("rmva_model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
 
               locationInput = XTrain.col(indexTrain(i));
               locationTarget(0) = YTrain(indexTrain(i));
@@ -390,7 +390,7 @@ namespace job {
               arma::mat tempInput = arma::zeros(28, 28);
               SendLocation(tempInput, location, 1, 8, 1, 2);
 
-              data::Load("model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
+              data::Load("rmva_model_" + std::to_string(sessionid) + ".xml", "rmva_model", net);
             }
 
             if (step)
